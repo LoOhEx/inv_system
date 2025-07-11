@@ -180,7 +180,6 @@
         </div>
     </div>
 
-    <!-- Modal Input Move -->
     <div id="modal_input_move" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 12px; width: 90%; max-width: 500px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
         <div style="padding: 20px 30px; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; border-radius: 12px 12px 0 0;">
             <h3 style="font-size: 18px; font-weight: 600; color: #333; margin: 0;">🚚 Input Move - Pindah Lokasi</h3>
@@ -278,11 +277,6 @@ function toggleInputDropdown() {
 function openInputModal(type) {
     // Hide dropdown
     document.getElementById('input_dropdown').style.display = 'none';
-    
-    // Hide all modals first
-    document.getElementById('modal_input_in').style.display = 'none';
-    document.getElementById('modal_input_out').style.display = 'none';
-    document.getElementById('modal_input_move').style.display = 'none';
     
     // Show overlay and specific modal
     document.getElementById('modal_overlay').style.display = 'block';

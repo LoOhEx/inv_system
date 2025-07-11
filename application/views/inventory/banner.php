@@ -11,9 +11,23 @@
           <div class="flex items-center flex-wrap gap-1 text-sm" style="vertical-align: bottom;margin-top:10px;">
            <a class="text-gray-700 hover:text-primary" href="<?php echo $config['base_url']; ?>">Home</a>
            <span class="text-gray-400 text-sm">/</span>
-           <a class="text-gray-700 hover:text-primary" href="<?php echo $config['base_url']; ?>inventory/all_item">Inventory</a>
+           <a class="text-gray-700 hover:text-primary" href="<?php echo $config['base_url']; ?>inventory">Inventory</a>
            <span class="text-gray-400 text-sm">/</span>
-           <a class="text-gray-900 hover:text-primary" href="<?php echo $config['base_url']; ?>inventory/all_item">All Item</a>
+           <?php
+             // Tentukan label dan link breadcrumb terakhir
+             $breadcrumb_last = 'All Item';
+             $breadcrumb_link = $config['base_url'] . 'inventory/all_item';
+             if (isset($config['hal_sub'])) {
+               if ($config['hal_sub'] == 'inv_ecct') {
+                 $breadcrumb_last = 'ECCT';
+                 $breadcrumb_link = $config['base_url'] . 'inventory/inv_ecct';
+               } elseif ($config['hal_sub'] == 'inv_ecbs') {
+                 $breadcrumb_last = 'ECBS';
+                 $breadcrumb_link = $config['base_url'] . 'inventory/inv';
+               }
+             }
+           ?>
+           <a class="text-gray-900 hover:text-primary" href="<?php echo $breadcrumb_link; ?>"><?php echo $breadcrumb_last; ?></a>
           </div>
          </div>
 
@@ -23,7 +37,7 @@
 
           <div class="menu menu-default flex flex-wrap justify-center gap-1.5 rounded-lg py-2">
            <div class="menu-item">
-            <a class="menu-link" href="<?php echo $config['base_url']; ?>inventory/all_item">
+            <a class="menu-link <?php echo (isset($config['hal_sub']) && $config['hal_sub'] == 'all_item') ? 'active' : ''; ?>" href="<?php echo $config['base_url']; ?>inventory/all_item">
              <span class="menu-icon">
               <i class="ki-filled ki-chart-simple"></i>
              </span>
@@ -31,7 +45,7 @@
             </a>
            </div>
            <div class="menu-item">
-            <a class="menu-link" href="<?php echo $config['base_url']; ?>">
+            <a class="menu-link <?php echo (isset($config['hal_sub']) && $config['hal_sub'] == 'inv_ecct') ? 'active' : ''; ?>" href="<?php echo $config['base_url']; ?>inventory/inv_ecct">
              <span class="menu-icon">
               <i class="ki-filled ki-shield-search"></i>
              </span>
@@ -39,7 +53,7 @@
             </a>
            </div>
            <div class="menu-item">
-            <a class="menu-link" href="<?php echo $config['base_url']; ?>">
+            <a class="menu-link <?php echo (isset($config['hal_sub']) && $config['hal_sub'] == 'inv') ? 'active' : ''; ?>" href="<?php echo $config['base_url']; ?>inventory/inv">
              <span class="menu-icon">
               <i class="ki-filled ki-rocket"></i>
              </span>
