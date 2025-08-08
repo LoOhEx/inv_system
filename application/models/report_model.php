@@ -288,5 +288,348 @@ class Report_model extends CI_Model {
         
         return $needs_data;
     }
+
+
+    public function getInventoryReportData($tech, $type) {
+        $this->db->select('
+            ir.id_pms, ir.id_week, ir.id_dvc, ir.dvc_size, ir.dvc_col, ir.dvc_qc,
+            ir.stock, ir.on_pms, ir.needs, ir.order, ir.over,
+            iw.date_start, iw.date_finish, iw.period_y, iw.period_m, iw.period_w,
+            id.dvc_code, id.dvc_name
+        ');
+        $this->db->from('inv_report ir');
+        $this->db->join('inv_week iw', 'ir.id_week = iw.id_week', 'left');
+        $this->db->join('inv_dvc id', 'ir.id_dvc = id.id_dvc', 'left');
+        $this->db->where('id.dvc_tech', $tech);
+        $this->db->where('id.dvc_type', $type);
+        $this->db->where('id.status', '0');
+        $this->db->order_by('iw.period_y DESC, iw.period_m DESC, iw.period_w ASC, id.dvc_priority ASC, ir.dvc_size ASC, ir.dvc_col ASC, ir.dvc_qc ASC');
+        
+        $query = $this->db->get();
+        return $query->result_array();
+    }
+    
+
+    
+    public function getWeekPeriods() {
+        $this->db->select('id_week, date_start, date_finish, period_y, period_m, period_w');
+        $this->db->from('inv_week');
+        $this->db->order_by('period_y DESC, period_m DESC, period_w ASC');
+        
+        $query = $this->db->get();
+        return $query->result_array();
+    }
+    
+    public function getDevicesForReport($tech, $type) {
+        $this->db->select('id_dvc, dvc_code, dvc_name');
+        $this->db->from('inv_dvc');
+        $this->db->where('dvc_tech', $tech);
+        $this->db->where('dvc_type', $type);
+        $this->db->where('status', '0');
+        $this->db->order_by('dvc_priority', 'ASC');
+        
+        $query = $this->db->get();
+        return $query->result_array();
+    }
+    
+    public function getDeviceColors($id_dvc) {
+        // Get device info first
+        $this->db->select('dvc_code, dvc_tech, dvc_type');
+        $this->db->from('inv_dvc');
+        $this->db->where('id_dvc', $id_dvc);
+        $this->db->where('status', '0');
+        $device_query = $this->db->get();
+        
+        if ($device_query->num_rows() == 0) {
+            return array();
+        }
+        
+        $device = $device_query->row_array();
+        $colors = array();
+        
+        // Determine colors based on device code and type
+        if (stripos($device['dvc_code'], 'VOH') === 0) {
+            // VOH devices have multiple colors
+            $colors = array('Dark Gray', 'Black', 'Grey', 'Navy', 'Army', 'Maroon', 'Custom');
+        } elseif ($device['dvc_tech'] == 'ecct' && $device['dvc_type'] == 'APP') {
+            // ECCT APP devices
+            $colors = array('Dark Gray');
+        } elseif ($device['dvc_tech'] == 'ecbs' && $device['dvc_type'] == 'APP') {
+            // ECBS APP devices
+            $colors = array('Black');
+        } elseif ($device['dvc_type'] == 'osc') {
+            $colors = array('');
+        }
+        
+        return $colors;
+    }
+    
+    public function saveOnPmsData($data) {
+        // First, check if record exists in inv_report
+        $this->db->where('id_week', $data['id_week']);
+        $this->db->where('id_dvc', $data['id_dvc']);
+        $this->db->where('dvc_size', $data['dvc_size']);
+        $this->db->where('dvc_col', $data['dvc_col']);
+        $this->db->where('dvc_qc', $data['dvc_qc']);
+        $existing = $this->db->get('inv_report');
+        
+        if ($existing->num_rows() > 0) {
+            // Update existing record
+            $this->db->where('id_week', $data['id_week']);
+            $this->db->where('id_dvc', $data['id_dvc']);
+            $this->db->where('dvc_size', $data['dvc_size']);
+            $this->db->where('dvc_col', $data['dvc_col']);
+            $this->db->where('dvc_qc', $data['dvc_qc']);
+            
+            return $this->db->update('inv_report', array('on_pms' => $data['on_pms']));
+        } else {
+            // This should not happen if inv_report is properly generated
+            // But we can handle it by creating the record
+            $insert_data = array(
+                'id_week' => $data['id_week'],
+                'id_dvc' => $data['id_dvc'],
+                'dvc_size' => $data['dvc_size'],
+                'dvc_col' => $data['dvc_col'],
+                'dvc_qc' => $data['dvc_qc'],
+                'stock' => 0,
+                'on_pms' => $data['on_pms'],
+                'needs' => 0,
+                'order' => 0,
+                'over' => 0
+            );
+            
+            return $this->db->insert('inv_report', $insert_data);
+        }
+    }
+
+    public function generateInventoryReportData() {
+        try {
+            // Get all weeks
+            $weeks = $this->getWeekPeriods();
+            
+            // Get all devices
+            $this->db->select('id_dvc, dvc_code, dvc_tech, dvc_type');
+            $this->db->from('inv_dvc');
+            $this->db->where('status', '0');
+            $devices_query = $this->db->get();
+            $devices = $devices_query->result_array();
+            
+            // QC array
+            $qc_types = array('LN', 'DN');
+            
+            foreach ($weeks as $week) {
+                foreach ($devices as $device) {
+                    // Get colors for this device
+                    $colors = $this->getDeviceColors($device['id_dvc']);
+
+                    if ($device['dvc_type'] === 'osc'){
+                        $sizes =array("-");
+                    } else {
+                        $sizes = array('xs', 's', 'm', 'l', 'xl', 'xxl', '3xl', 'all', 'cus');  
+                    }
+                    
+                    foreach ($sizes as $size) {
+                        foreach ($colors as $color) {
+                            foreach ($qc_types as $qc) {
+                                // Check if record already exists
+                                $this->db->where('id_week', $week['id_week']);
+                                $this->db->where('id_dvc', $device['id_dvc']);
+                                $this->db->where('dvc_size', $size);
+                                $this->db->where('dvc_col', $color);
+                                $this->db->where('dvc_qc', $qc);
+                                $existing = $this->db->get('inv_report');
+                                
+                                if ($existing->num_rows() == 0) {
+                                    // Calculate stock
+                                    $stock = $this->calculateStock($week, $device['id_dvc'], $size, $color, $qc);
+                                    
+                                    // Calculate needs
+                                    $needs = $this->calculateNeeds($week, $device['id_dvc'], $size, $color, $qc);
+                                    
+                                    // Insert new record
+                                    $insert_data = array(
+                                        'id_week' => $week['id_week'],
+                                        'id_dvc' => $device['id_dvc'],
+                                        'dvc_size' => $size,
+                                        'dvc_col' => $color,
+                                        'dvc_qc' => $qc,
+                                        'stock' => $stock,
+                                        'on_pms' => 0,
+                                        'needs' => $needs,
+                                        'order' => 0,
+                                        'over' => 0
+                                    );
+                                    
+                                    $this->db->insert('inv_report', $insert_data);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            return true;
+        } catch (Exception $e) {
+            log_message('error', 'Generate inventory report data error: ' . $e->getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Calculate stock based on inv_act data
+     */
+    private function calculateStock($week, $id_dvc, $size, $color, $qc) {
+        $this->db->select('COUNT(*) as stock_count');
+        $this->db->from('inv_act');
+        $this->db->where('id_dvc', $id_dvc);
+        $this->db->where('dvc_size', $size);
+        $this->db->where('dvc_col', $color);
+        $this->db->where('dvc_qc', $qc);
+        
+        // inv_in must be within the week period
+        $this->db->where('inv_in >=', $week['date_start']);
+        $this->db->where('inv_in <=', $week['date_finish']);
+        
+        // inv_out must NOT be within the week period (or be null)
+        $this->db->where('(inv_out IS NULL OR inv_out < "' . $week['date_start'] . '" OR inv_out > "' . $week['date_finish'] . '")');
+        
+        $query = $this->db->get();
+        $result = $query->row_array();
+        
+        return intval($result['stock_count']);
+    }
+    
+    /**
+     * Calculate needs based on inv_needs data
+     */
+    private function calculateNeeds($week, $id_dvc, $size, $color, $qc) {
+        // Get needs data
+        $this->db->select('needs_qty');
+        $this->db->from('inv_needs');
+        $this->db->where('id_dvc', $id_dvc);
+        $this->db->where('dvc_size', $size);
+        $this->db->where('dvc_col', $color);
+        $this->db->where('dvc_qc', $qc);
+        
+        $query = $this->db->get();
+        
+        if ($query->num_rows() > 0) {
+            $result = $query->row_array();
+            return intval($result['needs_qty']);
+        }
+        
+        return 0;
+    }
+    
+    public function updateInventoryReportStock() {
+        try {
+            // Get all existing inv_report records
+            $this->db->select('id_pms, id_week, id_dvc, dvc_size, dvc_col, dvc_qc');
+            $this->db->from('inv_report');
+            $report_records = $this->db->get()->result_array();
+            
+            foreach ($report_records as $record) {
+                // Get week info
+                $this->db->select('date_start, date_finish');
+                $this->db->from('inv_week');
+                $this->db->where('id_week', $record['id_week']);
+                $week_query = $this->db->get();
+                
+                if ($week_query->num_rows() > 0) {
+                    $week = $week_query->row_array();
+                    
+                    // Calculate new stock
+                    $stock = $this->calculateStock($week, $record['id_dvc'], $record['dvc_size'], $record['dvc_col'], $record['dvc_qc']);
+                    
+                    // Update stock
+                    $this->db->where('id_pms', $record['id_pms']);
+                    $this->db->update('inv_report', array('stock' => $stock));
+                }
+            }
+            
+            return true;
+        } catch (Exception $e) {
+            log_message('error', 'Update inventory report stock error: ' . $e->getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Update needs values in inv_report when inv_needs changes
+     */
+    public function updateInventoryReportNeedsAuto() {
+        try {
+            $current_date = date('Y-m-d H:i:s');
+            
+            // Get only active weeks (current date is within the week period)
+            $this->db->select('id_week, date_start, date_finish');
+            $this->db->from('inv_week');
+            $this->db->where('date_start <=', $current_date);
+            $this->db->where('date_finish >=', $current_date);
+            $active_weeks = $this->db->get()->result_array();
+            
+            if (empty($active_weeks)) {
+                return true; // No active weeks to update
+            }
+            
+            // Update needs for active weeks only
+            foreach ($active_weeks as $week) {
+                $this->db->select('ir.id_pms, ir.id_dvc, ir.dvc_size, ir.dvc_col, ir.dvc_qc');
+                $this->db->from('inv_report ir');
+                $this->db->where('ir.id_week', $week['id_week']);
+                $report_records = $this->db->get()->result_array();
+                
+                foreach ($report_records as $record) {
+                    // Calculate new needs from inv_needs
+                    $needs = $this->calculateNeeds($week, $record['id_dvc'], $record['dvc_size'], $record['dvc_col'], $record['dvc_qc']);
+                    
+                    // Update needs in inv_report
+                    $this->db->where('id_pms', $record['id_pms']);
+                    $this->db->update('inv_report', array('needs' => $needs));
+                }
+            }
+            
+            return true;
+        } catch (Exception $e) {
+            log_message('error', 'Auto update inventory report needs error: ' . $e->getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Modified updateInventoryReportNeeds to work with all weeks (manual trigger)
+     */
+    public function updateInventoryReportNeeds() {
+        try {
+            // Get all existing inv_report records
+            $this->db->select('id_pms, id_week, id_dvc, dvc_size, dvc_col, dvc_qc');
+            $this->db->from('inv_report');
+            $report_records = $this->db->get()->result_array();
+            
+            foreach ($report_records as $record) {
+                // Get week info
+                $this->db->select('date_start, date_finish');
+                $this->db->from('inv_week');
+                $this->db->where('id_week', $record['id_week']);
+                $week_query = $this->db->get();
+                
+                if ($week_query->num_rows() > 0) {
+                    $week = $week_query->row_array();
+                    
+                    // Calculate new needs
+                    $needs = $this->calculateNeeds($week, $record['id_dvc'], $record['dvc_size'], $record['dvc_col'], $record['dvc_qc']);
+                    
+                    // Update needs
+                    $this->db->where('id_pms', $record['id_pms']);
+                    $this->db->update('inv_report', array('needs' => $needs));
+                }
+            }
+            
+            return true;
+        } catch (Exception $e) {
+            log_message('error', 'Update inventory report needs error: ' . $e->getMessage());
+            return false;
+        }
+    }
 }
 ?>

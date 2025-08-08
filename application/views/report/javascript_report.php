@@ -1,43 +1,46 @@
 <script type="text/javascript">
-var editMode = false;
+var currentEditMode = false;
 
-function showToast(msg, type = 'success') {
-    var t = document.getElementById('toast') || document.createElement('div');
-    t.id = 'toast';
-    t.style.cssText = 'position:fixed;bottom:20px;right:20px;padding:12px 20px;border-radius:6px;color:white;z-index:9999;transition:all 0.3s;';
-    t.style.backgroundColor = type === 'error' ? '#ef4444' : type === 'warning' ? '#f59e0b' : '#10b981';
-    t.textContent = msg;
-    document.body.appendChild(t);
-    setTimeout(() => t.remove(), 3000);
+// Simple toast notification - positioned at bottom
+function showToast(message, type = 'success') {
+    var toast = document.getElementById('toast') || document.createElement('div');
+    toast.id = 'toast';
+    toast.style.cssText = 'position:fixed;bottom:20px;right:20px;padding:12px 20px;border-radius:6px;color:white;z-index:9999;transition:all 0.3s;';
+    toast.style.backgroundColor = type === 'error' ? '#ef4444' : type === 'warning' ? '#f59e0b' : '#10b981';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => toast.remove(), 3000);
 }
 
+// Toggle edit mode
 function toggleEditMode() {
-    if (editMode && hasChanges() && !confirm('Discard changes?')) return;
+    if (currentEditMode && hasChanges() && !confirm('Discard changes?')) return;
     
-    editMode = !editMode;
-    $('.needs-input').prop('disabled', !editMode);
+    currentEditMode = !currentEditMode;
+    $('.needs-input').prop('disabled', !currentEditMode);
     
-    var $btn = $('#editModeBtn');
-    var $save = $('#saveAllDataBtn');
-    
-    if (editMode) {
-        $btn.text('Cancel').removeClass('btn-primary').addClass('btn-secondary');
-        $save.show();
-        $('.needs-input').each(function() { $(this).data('orig', $(this).val()); });
+    if (currentEditMode) {
+        $('#editModeBtn').text('Cancel').removeClass('btn-primary').addClass('btn-secondary');
+        $('#saveAllDataBtn').show();
+        // Store original values
+        $('.needs-input').each(function() { $(this).data('original', $(this).val()); });
     } else {
-        $btn.text('Edit').removeClass('btn-secondary').addClass('btn-primary');
-        $save.hide();
+        $('#editModeBtn').text('Edit').removeClass('btn-secondary').addClass('btn-primary');
+        $('#saveAllDataBtn').hide();
+        // Restore if cancelled
         if (hasChanges()) {
-            $('.needs-input').each(function() { $(this).val($(this).data('orig') || 0); });
+            $('.needs-input').each(function() { $(this).val($(this).data('original') || 0); });
             calculateTotals();
         }
     }
 }
 
+// Check if there are unsaved changes
 function hasChanges() {
     var changed = false;
     $('.needs-input').each(function() {
-        if (($(this).data('orig') || 0) != ($(this).val() || 0)) {
+        if (($(this).data('original') || 0) != ($(this).val() || 0)) {
             changed = true;
             return false;
         }
@@ -47,117 +50,149 @@ function hasChanges() {
 
 function calculateTotals() {
     var sizes = ['xs', 's', 'm', 'l', 'xl', 'xxl', '3xl', 'all', 'cus'];
-    var grand = 0, rowTotals = {};
+    var qc_types = ['LN', 'DN'];
+    var grandTotal = 0;
+    var rowSubtotals = {};
     
+    // Calculate row subtotals
     $('.needs-input').each(function() {
         var key = $(this).data('id-dvc') + '_' + $(this).data('color');
-        rowTotals[key] = (rowTotals[key] || 0) + (parseInt($(this).val()) || 0);
+        rowSubtotals[key] = (rowSubtotals[key] || 0) + (parseInt($(this).val()) || 0);
     });
     
-    for (var key in rowTotals) {
-        $('#subtotal_' + key).text(rowTotals[key]);
-        grand += rowTotals[key];
+    // Update row subtotals and calculate grand total
+    for (var key in rowSubtotals) {
+        $('#subtotal_' + key).text(rowSubtotals[key]);
+        grandTotal += rowSubtotals[key];
     }
     
-    $('#grand_total').text(grand);
-    
+    // Update size+qc totals and percentages
     sizes.forEach(function(size) {
-        var total = 0;
-        $('.needs-input[data-size="' + size + '"]').each(function() {
-            total += parseInt($(this).val()) || 0;
+        qc_types.forEach(function(qc) {
+            var sizeQcTotal = 0;
+            $('.needs-input[data-size="' + size + '"][data-qc="' + qc + '"]').each(function() {
+                sizeQcTotal += parseInt($(this).val()) || 0;
+            });
+            $('#total_' + size + '_' + qc).text(sizeQcTotal);
+            $('#percent_' + size + '_' + qc).text(grandTotal > 0 ? Math.round((sizeQcTotal / grandTotal) * 1000) / 10 : 0);
         });
-        $('#total_' + size).text(total);
-        $('#percent_' + size).text(grand > 0 ? Math.round(total / grand * 1000) / 10 : 0);
     });
     
-    for (var key in rowTotals) {
-        $('#percentage_' + key).text(grand > 0 ? Math.round(rowTotals[key] / grand * 1000) / 10 : 0);
+    // Update grand total and row percentages
+    $('#grand_total').text(grandTotal);
+    for (var key in rowSubtotals) {
+        $('#percentage_' + key).text(grandTotal > 0 ? Math.round((rowSubtotals[key] / grandTotal) * 1000) / 10 : 0);
     }
 }
 
 function saveAllData() {
-    var data = [], changes = 0;
+    var data = [];
+    var hasData = false;
+    var actualChanges = 0;
     
     $('.needs-input').each(function() {
         var qty = parseInt($(this).val()) || 0;
-        var orig = parseInt($(this).data('orig')) || 0;
+        var original = parseInt($(this).data('original')) || 0;
         
-        if (qty > 0 || orig > 0) {
-            if (qty !== orig) changes++;
+        if (qty > 0 || original > 0) {
+            hasData = true;
+            
+            if (qty !== original) {
+                actualChanges++;
+            }
+            
             data.push({
                 id_dvc: $(this).data('id-dvc'),
                 dvc_size: $(this).data('size'),
                 dvc_col: $(this).data('color'),
                 dvc_qc: $(this).data('qc'),
                 needs_qty: qty,
-                original_qty: orig
+                original_qty: original
             });
         }
     });
     
-    if (!changes) {
-        showToast(data.length ? 'No changes detected' : 'No data to save', 'warning');
+    if (!hasData) {
+        showToast('No data to save', 'warning');
+        return;
+    }
+    
+    if (actualChanges === 0) {
+        showToast('No changes detected', 'warning');
         return;
     }
     
     var $btn = $('#saveAllDataBtn');
-    $btn.prop('disabled', true).text('Saving...');
+    $btn.prop('disabled', true).html('Saving...');
     
-    // Split batches if needed
+    var batchSize = 100;
     var batches = [];
-    for (var i = 0; i < data.length; i += 100) {
-        batches.push(data.slice(i, i + 100));
+    for (var i = 0; i < data.length; i += batchSize) {
+        batches.push(data.slice(i, i + batchSize));
     }
     
-    var actions = {inserted: 0, updated: 0, deleted: 0};
+    var completed = 0;
+    var totalActions = {inserted: 0, updated: 0, deleted: 0, unchanged: 0};
     
-    function processBatch(idx) {
-        if (idx >= batches.length) {
-            $btn.prop('disabled', false).text('Save All Data');
-            var msgs = [];
-            if (actions.inserted) msgs.push(actions.inserted + ' added');
-            if (actions.updated) msgs.push(actions.updated + ' updated');
-            if (actions.deleted) msgs.push(actions.deleted + ' removed');
+    function processBatch(index) {
+        if (index >= batches.length) {
+            $btn.prop('disabled', false).html('Save All Data');
+            var actions = [];
+            if (totalActions.inserted) actions.push(totalActions.inserted + ' added');
+            if (totalActions.updated) actions.push(totalActions.updated + ' updated');  
+            if (totalActions.deleted) actions.push(totalActions.deleted + ' removed');
             
-            showToast('Saved' + (msgs.length ? ' (' + msgs.join(', ') + ')' : ''));
-            $('.needs-input').each(function() { $(this).data('orig', $(this).val()); });
-            setTimeout(toggleEditMode, 500);
+            showToast('Saved successfully' + (actions.length ? ' (' + actions.join(', ') + ')' : ''));
+            
+            $('.needs-input').each(function() { $(this).data('original', $(this).val()); });
+            setTimeout(() => toggleEditMode(), 500);
             return;
         }
         
-        $.post('<?php echo base_url(); ?>inventory/save_all_needs_data', {data: batches[idx]}, function(res) {
-            if (res.success !== false && res.actions) {
-                Object.keys(actions).forEach(k => actions[k] += res.actions[k] || 0);
-                processBatch(idx + 1);
-            } else {
-                $btn.prop('disabled', false).text('Save All Data');
+        $.ajax({
+            url: '<?php echo base_url(); ?>inventory/save_all_needs_data',
+            type: 'POST',
+            data: {data: batches[index]},
+            dataType: 'json',
+            success: function(response) {
+                if (response.success !== false && response.actions) {
+                    ['inserted', 'updated', 'deleted', 'unchanged'].forEach(action => {
+                        if (response.actions[action]) totalActions[action] += response.actions[action];
+                    });
+                    processBatch(index + 1);
+                } else {
+                    $btn.prop('disabled', false).html('Save All Data');
+                    showToast('Save failed', 'error');
+                }
+            },
+            error: function() {
+                $btn.prop('disabled', false).html('Save All Data');
                 showToast('Save failed', 'error');
             }
-        }, 'json').fail(function() {
-            $btn.prop('disabled', false).text('Save All Data');
-            showToast('Save failed', 'error');
         });
     }
     
     processBatch(0);
 }
 
-$(function() {
+function setEditMode(mode) {
+    currentEditMode = mode;
+    toggleEditMode();
+    if (!mode) toggleEditMode();
+}
+
+$(document).ready(function() {
     calculateTotals();
-    
-    // Set initial state: view-only mode (disabled inputs)
-    editMode = false;
-    $('.needs-input').prop('disabled', true);
-    $('#editModeBtn').text('Edit').removeClass('btn-secondary').addClass('btn-primary');
-    $('#saveAllDataBtn').hide();
+    setEditMode(false);
     
     $(document).on('input', '.needs-input', calculateTotals);
+    
     $(document).keydown(function(e) {
         if ((e.ctrlKey || e.metaKey) && e.keyCode === 83) {
             e.preventDefault();
-            if (editMode) saveAllData();
+            if (currentEditMode) saveAllData();
         }
-        if (e.keyCode === 27 && editMode) toggleEditMode();
+        if (e.keyCode === 27 && currentEditMode) toggleEditMode();
     });
 });
 </script>

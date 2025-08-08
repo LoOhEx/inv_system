@@ -9,7 +9,8 @@ $voh_colors = array(
     array('name' => 'Custom', 'hex' => '#ffffff'),
 );
 
-$sizes = array('xs', 's', 'm', 'l', 'xl', 'xxl', '3xl', 'all', 'cus');
+$sizes = array('XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', 'ALL', 'CUS');
+$qc_types = array('LN', 'DN');
 $model_data = isset($data) && is_array($data) ? $data : array();
 $existing_needs = isset($existing_needs) && is_array($existing_needs) ? $existing_needs : array();
 $is_ecbs = isset($tech) && $tech == 'ecbs';
@@ -35,7 +36,6 @@ foreach ($model_data as $item) {
 
 // Merge VOH items if they exist
 if (!empty($voh_items)) {
-    // Use the first VOH item as base, but change the name
     $merged_voh = $voh_items[0];
     $merged_voh['dvc_name'] = 'Vest Outer Hoodie Element';
     $grouped_data[] = $merged_voh;
@@ -52,24 +52,30 @@ foreach ($regular_items as $item) {
         <table class="table table-border align-middle text-gray-700 text-s compact-table">
             <thead>
                 <tr>
-                    <th align="center">No</th>
-                    <th align="center">Nama Barang</th>
-                    <th align="center">Kode</th>
-                    <?php foreach ($sizes as $sz) { ?><th align="center"><?php echo strtoupper($sz); ?></th><?php } ?>
-                    <th align="center">Subtotal</th>
-                    <th align="center">%</th>
+                    <th align="center" rowspan="2">No</th>
+                    <th align="center" rowspan="2">Nama Barang</th>
+                    <th align="center" rowspan="2">Kode</th>
+                    <?php foreach ($sizes as $sz) { ?>
+                        <th align="center" colspan="2"><?php echo strtoupper($sz); ?></th>
+                    <?php } ?>
+                    <th align="center" rowspan="2">Subtotal</th>
+                    <th align="center" rowspan="2">%</th>
+                </tr>
+                <tr>
+                    <?php foreach ($sizes as $sz) { ?>
+                        <th align="center" style="font-size:11px;">LN</th>
+                        <th align="center" style="font-size:11px;">DN</th>
+                    <?php } ?>
                 </tr>
             </thead>
             <tbody>
                 <?php if (!empty($grouped_data)) {
                     $row_display_no = 1;
                     foreach ($grouped_data as $item) {
-                        // Check if this is VOH (either merged or individual)
                         $is_voh = ($is_ecbs && (stripos($item['dvc_name'], 'Vest Outer Hoodie') !== false || stripos($item['dvc_code'], 'VOH') === 0));
                         
                         if ($is_voh) {
                             foreach ($voh_colors as $color_idx => $color_info) {
-                                // Sanitize color name for use in IDs and data attributes
                                 $sanitized_color_name = str_replace(' ', '-', strtolower($color_info['name']));
                             ?>
                                 <tr>
@@ -86,24 +92,24 @@ foreach ($regular_items as $item) {
                                         <?php } ?>
                                     </td>
                                     <?php foreach ($sizes as $sz) {
-                                         $input_id = $item['dvc_code'] . '_' . $sz . '_' . $sanitized_color_name . '_' . $item['id_dvc'];
-                                        // Pass the sanitized color name to getExistingValue for correct lookup
-                                        $existing_value = getExistingValue($existing_needs, $item['id_dvc'], $sz, $sanitized_color_name, $item['id_dvc']);
+                                        foreach ($qc_types as $qc) {
+                                            $input_id = $item['dvc_code'] . '_' . $sz . '_' . $sanitized_color_name . '_' . $qc;
+                                            $existing_value = getExistingValue($existing_needs, $item['id_dvc'], $sz, $sanitized_color_name, $qc);
                                     ?>
-                                        <td align="center">
-                                            <input type="number"
-                                                    class="form-control form-control-sm needs-input"
-                                                    id="<?php echo $input_id; ?>"
-                                                    value="<?php echo $existing_value; ?>"
-                                                    min="0"
-                                                    style="width: 60px; text-align: center;"
-                                                   data-id-dvc="<?php echo $item['id_dvc']; ?>"
-                                                   data-size="<?php echo $sz; ?>"
-                                                   data-color="<?php echo $sanitized_color_name; ?>"
-                                                   data-qc="<?php echo $item['id_dvc']; ?>"
-                                                   onchange="calculateTotals()">
-                                        </td>
-                                    <?php } ?>
+                                            <td align="center">
+                                                <input type="number"
+                                                        class="form-control form-control-sm needs-input"
+                                                        id="<?php echo $input_id; ?>"
+                                                        value="<?php echo $existing_value; ?>"
+                                                        min="0"
+                                                        style="width: 45px; text-align: center;"
+                                                       data-id-dvc="<?php echo $item['id_dvc']; ?>"
+                                                       data-size="<?php echo $sz; ?>"
+                                                       data-color="<?php echo $sanitized_color_name; ?>"
+                                                       data-qc="<?php echo $qc; ?>"
+                                                       onchange="calculateTotals()">
+                                            </td>
+                                    <?php } } ?>
                                     <td align="center"><strong><span id="subtotal_<?php echo $item['id_dvc']; ?>_<?php echo $sanitized_color_name; ?>">0</span></strong></td>
                                     <td align="center"><span id="percentage_<?php echo $item['id_dvc']; ?>_<?php echo $sanitized_color_name; ?>">0</span>%</td>
                                 </tr>
@@ -115,23 +121,24 @@ foreach ($regular_items as $item) {
                                 <td align="left"><?php echo htmlspecialchars($item['dvc_name']); ?></td>
                                 <td align="center"><?php echo htmlspecialchars($item['dvc_code']); ?></td>
                                 <?php foreach ($sizes as $sz) {
-                                     $input_id = $item['dvc_code'] . '_' . $sz . '_default_' . $item['id_dvc'];
-                                    $existing_value = getExistingValue($existing_needs, $item['id_dvc'], $sz, 'default', $item['id_dvc']);
+                                    foreach ($qc_types as $qc) {
+                                        $input_id = $item['dvc_code'] . '_' . $sz . '_default_' . $qc;
+                                        $existing_value = getExistingValue($existing_needs, $item['id_dvc'], $sz, 'default', $qc);
                                 ?>
-                                    <td align="center">
-                                        <input type="number"
-                                                class="form-control form-control-sm needs-input"
-                                                id="<?php echo $input_id; ?>"
-                                                value="<?php echo $existing_value; ?>"
-                                                min="0"
-                                                style="width: 60px; text-align: center;"
-                                               data-id-dvc="<?php echo $item['id_dvc']; ?>"
-                                               data-size="<?php echo $sz; ?>"
-                                               data-color="default"
-                                               data-qc="<?php echo $item['id_dvc']; ?>"
-                                               onchange="calculateTotals()">
-                                    </td>
-                                <?php } ?>
+                                        <td align="center">
+                                            <input type="number"
+                                                    class="form-control form-control-sm needs-input"
+                                                    id="<?php echo $input_id; ?>"
+                                                    value="<?php echo $existing_value; ?>"
+                                                    min="0"
+                                                    style="width: 45px; text-align: center;"
+                                                   data-id-dvc="<?php echo $item['id_dvc']; ?>"
+                                                   data-size="<?php echo $sz; ?>"
+                                                   data-color="default"
+                                                   data-qc="<?php echo $qc; ?>"
+                                                   onchange="calculateTotals()">
+                                        </td>
+                                <?php } } ?>
                                 <td align="center"><strong><span id="subtotal_<?php echo $item['id_dvc']; ?>_default">0</span></strong></td>
                                 <td align="center"><span id="percentage_<?php echo $item['id_dvc']; ?>_default">0</span>%</td>
                             </tr>
@@ -139,20 +146,26 @@ foreach ($regular_items as $item) {
                     }
                 } else { ?>
                     <tr>
-                        <td align="center" colspan="<?php echo 3 + count($sizes) + 2; ?>"><i>No Data Found</i></td>
+                        <td align="center" colspan="<?php echo 3 + (count($sizes) * 2) + 2; ?>"><i>No Data Found</i></td>
                     </tr>
                 <?php } ?>
             </tbody>
             <tfoot>
                 <tr style="background-color: #00bfff; color: white; font-weight: bold;">
                     <td align="center" colspan="3">TOTAL</td>
-                    <?php foreach ($sizes as $sz) { ?><td align="center"><span id="total_<?php echo $sz; ?>">0</span></td><?php } ?>
+                    <?php foreach ($sizes as $sz) { 
+                        foreach ($qc_types as $qc) { ?>
+                            <td align="center"><span id="total_<?php echo $sz; ?>_<?php echo $qc; ?>">0</span></td>
+                    <?php } } ?>
                     <td align="center" rowspan="2" style="vertical-align: middle;"><strong><span id="grand_total">0</span></strong></td>
                     <td align="center" rowspan="2" style="vertical-align: middle;"><strong>100%</strong></td>
                 </tr>
                 <tr style="background-color: #00bfff; color: white; font-weight: bold;">
                     <td align="center" colspan="3">PERSENTASE</td>
-                    <?php foreach ($sizes as $sz) { ?><td align="center"><span id="percent_<?php echo $sz; ?>">0</span>%</td><?php } ?>
+                    <?php foreach ($sizes as $sz) { 
+                        foreach ($qc_types as $qc) { ?>
+                            <td align="center"><span id="percent_<?php echo $sz; ?>_<?php echo $qc; ?>">0</span>%</td>
+                    <?php } } ?>
                 </tr>
             </tfoot>
         </table>
@@ -166,15 +179,15 @@ foreach ($regular_items as $item) {
 
 <style>
 .compact-table {
-    font-size: 13px !important;
+    font-size: 12px !important;
 }
 .compact-table th,
 .compact-table td {
-    padding: 0px 4px !important;
-    line-height: 1.8 !important;
+    padding: 2px 2px !important;
+    line-height: 1.6 !important;
 }
 .compact-table th {
-    font-size: 14px !important;
+    font-size: 12px !important;
 }
 </style>
 

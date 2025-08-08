@@ -37,6 +37,21 @@ class Inventory extends CI_Controller {
             show_error('An error occurred while loading the page.');
         }
     }
+
+    public function inv_report() {
+        try {
+            $data['onload'] = "showData();";
+            $data = $this->load_top($data);
+            $data['title_page'] = "Inventory Report";
+            $data['dvc_code'] = $this->report_model->getDevicesForReport('ecbs', 'app'); // Default data
+            $this->load->view('inventory/banner', $data);
+            $this->load->view('report/inv_report', $data);
+            $this->load_bot($data);
+        } catch (Exception $e) {
+            log_message('error', 'Inventory report page error: ' . $e->getMessage());
+            show_error('An error occurred while loading the page.');
+        }
+    }
     
     public function massive_input() {
         try {
@@ -366,211 +381,378 @@ class Inventory extends CI_Controller {
         exit;
     }
 
+    private $report_configs = array(
+        'report_ecbs_app' => array('tech' => 'ecbs', 'type' => 'app', 'view' => 'report/needs/report_app_show', 'export' => 'ECBS_APP_Report'),
+        'report_ecct_app' => array('tech' => 'ecct', 'type' => 'app', 'view' => 'report/needs/report_app_show', 'export' => 'ECCT_APP_Report'),
+        'report_ecbs_osc' => array('tech' => 'ecbs', 'type' => 'osc', 'view' => 'report/needs/report_osc_show', 'export' => 'ECBS_OSC_Report'),
+        'report_ecct_osc' => array('tech' => 'ecct', 'type' => 'osc', 'view' => 'report/needs/report_osc_show', 'export' => 'ECCT_OSC_Report'),
+    );
+    
+    private $inv_report_configs = array(
+        'report_ecbs_app' => array('tech' => 'ecbs', 'type' => 'app', 'view' => 'report/report/report_app_show', 'export' => 'ECBS_APP_Inventory_Report'),
+        'report_ecct_app' => array('tech' => 'ecct', 'type' => 'app', 'view' => 'report/report/report_app_show', 'export' => 'ECCT_APP_Inventory_Report'),
+        'report_ecbs_osc' => array('tech' => 'ecbs', 'type' => 'osc', 'view' => 'report/report/report_osc_show', 'export' => 'ECBS_OSC_Inventory_Report'),
+        'report_ecct_osc' => array('tech' => 'ecct', 'type' => 'osc', 'view' => 'report/report/report_osc_show', 'export' => 'ECCT_OSC_Inventory_Report'),
+    );
+
     public function report($type = "", $input = "") {
         try {
-            $this->load->model('report_model');
-            
-            if (!$this->input->is_ajax_request()) {
-                $data = $this->load_top("", "no_view");
-            } else {
-                $data = array();
-            }
-            
-            $report_map = array(
-                'report_ecbs_app' => array('tech' => 'ecbs', 'type' => 'app', 'view' => 'report/needs/report_app_show', 'export_filename' => 'ECBS_APP_Report'),
-                'report_ecct_app' => array('tech' => 'ecct', 'type' => 'app', 'view' => 'report/needs/report_app_show', 'export_filename' => 'ECCT_APP_Report'),
-                'report_ecbs_osc' => array('tech' => 'ecbs', 'type' => 'osc', 'view' => 'report/needs/report_osc_show', 'export_filename' => 'ECBS_OSC_Report'),
-                'report_ecct_osc' => array('tech' => 'ecct', 'type' => 'osc', 'view' => 'report/needs/report_osc_show', 'export_filename' => 'ECCT_OSC_Report'),
-            );
-            
-            // Use strpos for PHP 5 compatibility
+            $data = $this->_prepare_view_data();
             $base_type = str_replace(array('_show', '_export'), '', $type);
             $action = (strpos($type, '_export') !== false) ? 'export' : 'show';
             
-            if (isset($report_map[$base_type])) {
-                $config = $report_map[$base_type];
-                $data['data'] = $this->report_model->getReportData($config['tech'], $config['type']);
-                
-                if ($action === 'show') {
-                    $data['existing_needs'] = $this->report_model->getExistingNeedsData($config['tech'], $config['type']);
-                    $data['tech'] = $config['tech'];
-                    $data['device_type'] = $config['type'];
-                    $this->load->view($config['view'], $data);
-                } elseif ($action === 'export') {
-                    $this->exportReportData($data['data'], $config['export_filename']);
-                    return; // Exit after export
-                }
-            } else {
-                echo "<div style='padding: 20px; text-align: center;'><h3>Report not found</h3></div>";
+            if (!isset($this->report_configs[$base_type])) {
+                $this->_show_error("Report not found");
                 return;
             }
             
-            if (!$this->input->is_ajax_request()) {
-                $this->load_bot($data, "no_view");
+            $config = $this->report_configs[$base_type];
+            $data['data'] = $this->report_model->getReportData($config['tech'], $config['type']);
+            
+            if ($action === 'export') {
+                $this->_export_csv($data['data'], $config['export'], array('ID', 'Device Code', 'Device Name', 'Status'), 
+                    function($row) {
+                        return array($row['id_dvc'], $row['dvc_code'], $row['dvc_name'], $row['status']);
+                    });
+                return;
             }
+            
+            $data['existing_needs'] = $this->report_model->getExistingNeedsData($config['tech'], $config['type']);
+            $data['tech'] = $config['tech'];
+            $data['device_type'] = $config['type'];
+            
+            $this->_render_view($config['view'], $data);
+            
         } catch (Exception $e) {
-            log_message('error', 'Report error: ' . $e->getMessage());
-            show_error('An error occurred while generating the report.');
+            $this->_handle_error($e, 'Report error');
         }
     }
     
-    private function exportReportData($data, $filename) {
+    /**
+     * Inventory report data method (renamed from inv_report)
+     */
+    public function inv_report_data($type = "", $input = "") {
+        try {
+            $data = $this->_prepare_view_data();
+            $base_type = str_replace(array('_show', '_export'), '', $type);
+            $action = (strpos($type, '_export') !== false) ? 'export' : 'show';
+            
+            if (!isset($this->inv_report_configs[$base_type])) {
+                $this->_show_error("Inventory Report not found");
+                return;
+            }
+            
+            $config = $this->inv_report_configs[$base_type];
+            $data['data'] = $this->report_model->getInventoryReportData($config['tech'], $config['type']);
+            
+            if ($action === 'export') {
+                $this->_export_csv($data['data'], $config['export'], 
+                    array('ID PMS', 'Week', 'Device Code', 'Device Name', 'Size', 'Color', 'QC', 'Stock', 'On PMS', 'Needs', 'Order', 'Over'),
+                    function($row) {
+                        $week_display = 'W' . $row['period_w'] . '/' . $row['period_m'] . '/' . $row['period_y'];
+                        return array(
+                            $row['id_pms'], $week_display, $row['dvc_code'], $row['dvc_name'],
+                            strtoupper($row['dvc_size']), $row['dvc_col'] === '' ? '-' : $row['dvc_col'],
+                            $row['dvc_qc'], intval($row['stock']), intval($row['on_pms']),
+                            intval($row['needs']), intval($row['order']), intval($row['over'])
+                        );
+                    });
+                return;
+            }
+            
+            $data['tech'] = $config['tech'];
+            $data['device_type'] = $config['type'];
+            
+            $this->_render_view($config['view'], $data);
+            
+        } catch (Exception $e) {
+            $this->_handle_error($e, 'Inventory Report error');
+        }
+    }
+    
+    /**
+     * Save all needs data
+     */
+    public function save_all_needs_data() {
+        try {
+            $data = $this->input->post('data');
+            
+            if (!is_array($data)) {
+                $this->_json_response(false, 'Invalid data format');
+                return;
+            }
+            
+            $success_count = 0;
+            $actions = array();
+            
+            foreach ($data as $item) {
+                $result = $this->_process_needs_item($item);
+                if ($result['success']) {
+                    $success_count++;
+                }
+                $actions[] = $result['action'];
+            }
+            
+            // Auto-update inventory report after needs save
+            // This will update needs values for current active weeks only
+            $this->report_model->updateInventoryReportNeedsAuto();
+            
+            $this->_json_response(true, 'Data processed', array(
+                'success' => $success_count,
+                'total' => count($data),
+                'actions' => array_count_values($actions)
+            ));
+            
+        } catch (Exception $e) {
+            $this->_handle_error($e, 'Save all needs data error', true);
+        }
+    }
+    
+    /**
+     * Save On PMS data - Fixed method
+     */
+    public function save_on_pms() {
+        try {
+            $data = array(
+                'id_week' => $this->input->post('id_week'),
+                'id_dvc' => $this->input->post('id_dvc'),
+                'dvc_size' => $this->input->post('dvc_size'),
+                'dvc_col' => $this->input->post('dvc_col'),
+                'dvc_qc' => $this->input->post('dvc_qc'),
+                'on_pms' => intval($this->input->post('on_pms'))
+            );
+            
+            // Validate required fields
+            if (empty($data['id_week']) || empty($data['id_dvc']) || empty($data['dvc_size']) || 
+                empty($data['dvc_col']) || empty($data['dvc_qc']) || $data['on_pms'] < 0) {
+                $this->_json_response(false, 'Invalid input data');
+                return;
+            }
+            
+            $result = $this->report_model->saveOnPmsData($data);
+            
+            $this->_json_response($result, $result ? 'On PMS data saved successfully' : 'Failed to save data');
+            
+        } catch (Exception $e) {
+            $this->_handle_error($e, 'Save On PMS error', true);
+        }
+    }
+    
+    /**
+     * Get device colors
+     */
+    public function get_device_colors() {
+        try {
+            $id_dvc = $this->input->get('id_dvc');
+            $colors = $this->report_model->getDeviceColors($id_dvc);
+            
+            $this->_json_response(true, 'Colors loaded', array('colors' => $colors));
+            
+        } catch (Exception $e) {
+            $this->_handle_error($e, 'Error loading device colors', true);
+        }
+    }
+    
+    /**
+     * Get week periods
+     */
+    public function get_week_periods() {
+        try {
+            $weeks = $this->report_model->getWeekPeriods();
+            $this->_json_response(true, 'Week periods loaded', array('weeks' => $weeks));
+            
+        } catch (Exception $e) {
+            $this->_handle_error($e, 'Error loading week periods', true);
+        }
+    }
+    
+    /**
+     * Get devices for report
+     */
+    public function get_devices_for_report() {
+        try {
+            $tech = $this->input->get('tech');
+            $type = $this->input->get('type');
+            
+            $devices = $this->report_model->getDevicesForReport($tech, $type);
+            $this->_json_response(true, 'Devices loaded', array('devices' => $devices));
+            
+        } catch (Exception $e) {
+            $this->_handle_error($e, 'Error loading devices', true);
+        }
+    }
+    
+    /**
+     * Generate inventory report data
+     */
+    public function generate_inventory_report() {
+        try {
+            $result = $this->report_model->generateInventoryReportData();
+            $message = $result ? 'Inventory report data generated successfully' : 'Failed to generate inventory report data';
+            
+            if ($this->input->is_ajax_request()) {
+                $this->_json_response($result, $message);
+            } else {
+                echo $message;
+            }
+            
+        } catch (Exception $e) {
+            $this->_handle_error($e, 'Generate inventory report error', $this->input->is_ajax_request());
+        }
+    }
+        
+    /**
+     * Update inventory stock
+     */
+    public function update_inventory_stock() {
+        try {
+            $result = $this->report_model->updateInventoryReportStock();
+            $message = $result ? 'Inventory stock updated successfully' : 'Failed to update inventory stock';
+            
+            if ($this->input->is_ajax_request()) {
+                $this->_json_response($result, $message);
+            } else {
+                echo $message;
+            }
+            
+        } catch (Exception $e) {
+            $this->_handle_error($e, 'Update inventory stock error', $this->input->is_ajax_request());
+        }
+    }
+    
+    /**
+     * Update inventory needs
+     */
+    public function update_inventory_needs() {
+        try {
+            $result = $this->report_model->updateInventoryReportNeeds();
+            $message = $result ? 'Inventory needs updated successfully' : 'Failed to update inventory needs';
+            
+            if ($this->input->is_ajax_request()) {
+                $this->_json_response($result, $message);
+            } else {
+                echo $message;
+            }
+            
+        } catch (Exception $e) {
+            $this->_handle_error($e, 'Update inventory needs error', $this->input->is_ajax_request());
+        }
+    }
+    
+    // =============== PRIVATE HELPER METHODS ===============
+    
+    private function _prepare_view_data() {
+        return !$this->input->is_ajax_request() ? $this->load_top("", "no_view") : array();
+    }
+    
+    private function _render_view($view, $data) {
+        $this->load->view($view, $data);
+        if (!$this->input->is_ajax_request()) {
+            $this->load_bot($data, "no_view");
+        }
+    }
+    
+    private function _show_error($message) {
+        echo "<div style='padding: 20px; text-align: center;'><h3>{$message}</h3></div>";
+    }
+    
+    private function _export_csv($data, $filename, $headers, $row_callback) {
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename="' . $filename . '_' . date('Y-m-d') . '.csv"');
         
         $output = fopen('php://output', 'w');
+        fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF)); // UTF-8 BOM
         
-        // Add BOM for UTF-8
-        fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
-        
-        fputcsv($output, array('ID', 'Device Code', 'Device Name', 'Status'));
-        
+        fputcsv($output, $headers);
         foreach ($data as $row) {
-            fputcsv($output, array(
-                $row['id_dvc'],
-                $row['dvc_code'],
-                $row['dvc_name'],
-                $row['status']
-            ));
+            fputcsv($output, $row_callback($row));
         }
         
         fclose($output);
         exit;
     }
     
-    public function save_all_needs_data() {
-        try {
-            $this->load->model('report_model');
-            
-            // Get the raw POST data
-            $data = $this->input->post('data');
-            $success_count = 0;
-            $actions = array();
-            
-            if (!is_array($data)) {
-                echo json_encode(array('success' => false, 'message' => 'Invalid data format'));
-                return;
-            }
-            
-            foreach ($data as $item) {
-                // Ensure all required keys exist with default values
-                $item = array_merge(array(
-                    'id_dvc' => '',
-                    'dvc_size' => '',
-                    'dvc_col' => '',
-                    'dvc_qc' => '',
-                    'needs_qty' => 0,
-                    'original_qty' => 0
-                ), $item);
-                
-                // Validate required fields
-                if (empty($item['id_dvc']) || $item['id_dvc'] == '0') {
-                    continue;
-                }
-                
-                // Convert quantities to integer
-                $item['needs_qty'] = intval($item['needs_qty']);
-                $item['original_qty'] = intval($item['original_qty']);
-                
-                // Skip if values are the same (no actual change)
-                if ($item['needs_qty'] === $item['original_qty']) {
-                    $actions[] = 'unchanged';
-                    continue;
-                }
-                
-                // Prepare data for database (exclude original_qty)
-                $db_data = array(
-                    'id_dvc' => $item['id_dvc'],
-                    'dvc_size' => $item['dvc_size'],
-                    'dvc_col' => $item['dvc_col'],
-                    'dvc_qc' => $item['dvc_qc'],
-                    'needs_qty' => $item['needs_qty']
-                );
-                
-                // If quantity is 0 or empty, delete the record
-                if ($item['needs_qty'] <= 0) {
-                    $result = $this->report_model->deleteNeedsData(
-                        $item['id_dvc'], 
-                        $item['dvc_size'], 
-                        $item['dvc_col'], 
-                        $item['dvc_qc']
-                    );
-                    if ($result) {
-                        $success_count++;
-                        $actions[] = 'deleted';
-                    }
-                    continue;
-                }
-                
-                // Check if record exists
-                $existing = $this->report_model->getNeedsData(
-                    $item['id_dvc'], 
-                    $item['dvc_size'], 
-                    $item['dvc_col'], 
-                    $item['dvc_qc']
-                );
-                
-                if ($existing) {
-                    // Update existing record
-                    $result = $this->report_model->updateNeedsData(
-                        $existing['id_needs'], 
-                        array('needs_qty' => $item['needs_qty'])
-                    );
-                    if ($result) {
-                        $success_count++;
-                        $actions[] = 'updated';
-                    }
-                } else {
-                    // Insert new record (only fields that exist in database)
-                    $result = $this->report_model->saveNeedsData($db_data);
-                    if ($result) {
-                        $success_count++;
-                        $actions[] = 'inserted';
-                    }
-                }
-            }
-            
-            echo json_encode(array(
-                'success' => $success_count,
-                'total' => count($data),
-                'actions' => array_count_values($actions)
-            ));
-        } catch (Exception $e) {
-            log_message('error', 'Save all needs data error: ' . $e->getMessage());
-            echo json_encode(array('success' => false, 'message' => 'An error occurred while saving data'));
+    private function _process_needs_item($item) {
+        // Set default values
+        $item = array_merge(array(
+            'id_dvc' => '', 'dvc_size' => '', 'dvc_col' => '', 'dvc_qc' => '',
+            'needs_qty' => 0, 'original_qty' => 0
+        ), $item);
+        
+        // Validate and convert
+        if (empty($item['id_dvc']) || $item['id_dvc'] == '0') {
+            return array('success' => false, 'action' => 'invalid');
+        }
+        
+        $item['needs_qty'] = intval($item['needs_qty']);
+        $item['original_qty'] = intval($item['original_qty']);
+        
+        // Skip if no change
+        if ($item['needs_qty'] === $item['original_qty']) {
+            return array('success' => true, 'action' => 'unchanged');
+        }
+        
+        $db_data = array(
+            'id_dvc' => $item['id_dvc'], 'dvc_size' => $item['dvc_size'],
+            'dvc_col' => $item['dvc_col'], 'dvc_qc' => $item['dvc_qc'],
+            'needs_qty' => $item['needs_qty']
+        );
+        
+        // Delete if quantity is 0 or less
+        if ($item['needs_qty'] <= 0) {
+            $result = $this->report_model->deleteNeedsData($item['id_dvc'], $item['dvc_size'], $item['dvc_col'], $item['dvc_qc']);
+            return array('success' => $result, 'action' => 'deleted');
+        }
+        
+        // Check if exists and update or insert
+        $existing = $this->report_model->getNeedsData($item['id_dvc'], $item['dvc_size'], $item['dvc_col'], $item['dvc_qc']);
+        
+        if ($existing) {
+            $result = $this->report_model->updateNeedsData($existing['id_needs'], array('needs_qty' => $item['needs_qty']));
+            return array('success' => $result, 'action' => 'updated');
+        } else {
+            $result = $this->report_model->saveNeedsData($db_data);
+            return array('success' => $result, 'action' => 'inserted');
         }
     }
-    
-    // Helper methods
+
     protected function _get_json_input() {
         $json = file_get_contents('php://input');
         return json_decode($json, true);
     }
-    
-    private function _json_response($success, $message, $data = null) {
-        $response = array(
-            'success' => $success,
-            'message' => $message
-        );
-        if ($data !== null) {
-            $response['data'] = $data;
-        }
-        return $response;
-    }
-    
+
     private function _output_json($data) {
         $this->output
             ->set_content_type('application/json')
             ->set_output(json_encode($data));
     }
     
-    function load_top($data = "", $view = "", $access = "") {
-        $this->load->model("load_model");
-        $data = $this->load_model->load_top_v3($data, $view, $access);
-        return $data;
+    private function _json_response($success, $message, $data = null) {
+        $response = array('success' => $success, 'message' => $message);
+        if ($data !== null) {
+            $response = array_merge($response, $data);
+        }
+        echo json_encode($response);
     }
     
-    function load_bot($data = "", $view = "") {
+    private function _handle_error($e, $log_message, $is_json = false) {
+        log_message('error', $log_message . ': ' . $e->getMessage());
+        
+        if ($is_json) {
+            $this->_json_response(false, 'An error occurred');
+        } else {
+            show_error('An error occurred while processing your request.');
+        }
+    }
+    
+    // =============== LOAD METHODS ===============
+    
+    protected function load_top($data = "", $view = "", $access = "") {
+        $this->load->model("load_model");
+        return $this->load_model->load_top_v3($data, $view, $access);
+    }
+    
+    protected function load_bot($data = "", $view = "") {
         $this->load->model("load_model");
         $this->load_model->load_bot_v3($data, $view);
     }
