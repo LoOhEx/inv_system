@@ -101,5 +101,6 @@ function getDayName($dayNumber) {
     ];
     return isset($days[$dayNumber]) ? $days[$dayNumber] : '';
 }
+
 ?>
     

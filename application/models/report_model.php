@@ -76,13 +76,28 @@ class Report_model extends CI_Model {
     }
     
     /**
+     * Check if periods already exist for given year/month
+     */
+    public function periods_exist($year, $month) {
+        $this->db->where('period_y', $year);
+        $this->db->where('period_m', $month);
+        $this->db->from('inv_week');
+        return $this->db->count_all_results() > 0;
+    }
+    
+    /**
      * Generate weekly periods with proper 5-day work week logic (Monday-Friday)
      * Period runs from 27th of previous month (08:00) to 26th of current month (17:00)
      */
-    public function generate_weekly_periods($year, $month) {
+    public function generate_weekly_periods($year, $month, $regenerate = false) {
         // Validate input
         if (!$year || !$month || $year < 2020 || $year > 2030 || $month < 1 || $month > 12) {
             throw new Exception('Invalid year or month provided');
+        }
+        
+        // Check if periods already exist for this year/month (unless regenerating)
+        if (!$regenerate && $this->periods_exist($year, $month)) {
+            throw new Exception('Periode untuk tahun ' . $year . ' bulan ' . $month . ' sudah ada. Silakan pilih tahun/bulan lain atau gunakan data yang sudah ada.');
         }
         
         // Clear existing data for this year/month

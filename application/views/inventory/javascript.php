@@ -392,7 +392,7 @@ function renderToolbar() {
       toolbarRight += '<span class="btn btn-primary btn-sm" onclick="showSecondaryData();">Search</span>'
       toolbarRight += "</div>"
       toolbarRight +=
-        '<a class="btn btn-sm btn-icon-lg btn-light" onclick="showSecondaryData(\'export\');" style="margin-left:4px;"><i class="ki-filled ki-exit-down !text-base"></i>Export</a>'
+      '<a class="btn btn-sm btn-icon-lg btn-light" onclick="exportInvWeekData();" style="margin-left:4px; padding: 0.375rem 0.75rem; border-radius: 0.25rem; border: 1px solid #ddd; background-color: #f8f9fa; color: #495057;"><i class="ki-filled ki-exit-down !text-base"></i>Export</a>'
     }
   }
 

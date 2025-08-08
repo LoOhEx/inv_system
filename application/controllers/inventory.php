@@ -100,6 +100,21 @@ class Inventory extends CI_Controller {
         }
     }
     
+    public function inv_week() {
+        try {
+            $data['onload'] = "showInvWeekData();";
+            $data = $this->load_top($data);
+            $data['title_page'] = "Inventory Weekly Period Management";
+            $this->load->view('inventory/banner', $data);
+            $this->load->view('report/inv_week', $data);
+            $this->load->view('inventory/javascript', $data);
+            $this->load_bot($data);
+        } catch (Exception $e) {
+            log_message('error', 'Inv week error: ' . $e->getMessage());
+            show_error('An error occurred while loading the page.');
+        }
+    }
+
     public function inv_report_needs() {
         try {
             $data['onload'] = "";
@@ -169,7 +184,7 @@ class Inventory extends CI_Controller {
                     $data['data'] = array();
                 }
                 
-                $this->load->view('inventory/data/data_inv_week_show', $data);
+                $this->load->view('report/week/data_inv_week_show', $data);
                 $this->load_bot($data, "no_view");
                 return;
             }
@@ -240,19 +255,33 @@ class Inventory extends CI_Controller {
         }
     }
 
-    // Weekly period management methods
-    public function inv_week() {
+
+    public function check_inv_week_periods() {
         try {
-            $data['onload'] = "showInvWeekData();";
-            $data = $this->load_top($data);
-            $data['title_page'] = "Inventory Weekly Period Management";
-            $this->load->view('inventory/banner', $data);
-            $this->load->view('inventory/inv_week', $data);
-            $this->load->view('inventory/javascript', $data);
-            $this->load_bot($data);
+            $year = $this->input->get('year');
+            $month = $this->input->get('month');
+            
+            if (!$year || !$month) {
+                return $this->_output_json($this->_json_response(false, 'Year and month are required'));
+            }
+
+            $year = intval($year);
+            $month = intval($month);
+
+            // Validate year and month ranges
+            if ($year < 2020 || $year > 2030) {
+                return $this->_output_json($this->_json_response(false, 'Invalid year range'));
+            }
+            
+            if ($month < 1 || $month > 12) {
+                return $this->_output_json($this->_json_response(false, 'Invalid month range'));
+            }
+
+            $exists = $this->report_model->periods_exist($year, $month);
+            return $this->_output_json($this->_json_response(true, '', array('exists' => $exists)));
         } catch (Exception $e) {
-            log_message('error', 'Inv week error: ' . $e->getMessage());
-            show_error('An error occurred while loading the page.');
+            log_message('error', 'Check periods error: ' . $e->getMessage());
+            return $this->_output_json($this->_json_response(false, 'Error: ' . $e->getMessage()));
         }
     }
 
@@ -265,6 +294,7 @@ class Inventory extends CI_Controller {
 
             $year = isset($input_data['year']) ? intval($input_data['year']) : null;
             $month = isset($input_data['month']) ? intval($input_data['month']) : null;
+            $regenerate = isset($input_data['regenerate']) ? boolval($input_data['regenerate']) : false;
 
             if (!$year || !$month) {
                 return $this->_output_json($this->_json_response(false, 'Year and month are required'));
@@ -279,9 +309,10 @@ class Inventory extends CI_Controller {
                 return $this->_output_json($this->_json_response(false, 'Invalid month range'));
             }
 
-            $result = $this->report_model->generate_weekly_periods($year, $month);
+            $result = $this->report_model->generate_weekly_periods($year, $month, $regenerate);
             
-            $message = "Periods generated successfully with 27th-26th logic and 08:00-17:00 time schedule. Total periods: " . count($result);
+            $action = $regenerate ? 'regenerated' : 'generated';
+            $message = "Periods {$action} successfully with 27th-26th logic and 08:00-17:00 time schedule. Total periods: " . count($result);
             return $this->_output_json($this->_json_response(true, $message, $result));
         } catch (Exception $e) {
             log_message('error', 'Generate periods error: ' . $e->getMessage());
