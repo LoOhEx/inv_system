@@ -8,7 +8,7 @@ class Report_model extends CI_Model {
     }
     
     public function getReportData($tech, $type) {
-        $this->db->select('id_dvc, dvc_code, dvc_name, status');
+        $this->db->select('id_dvc, dvc_code, dvc_name, dvc_tech, dvc_type, status');
         $this->db->from('inv_dvc');
         $this->db->where('status', '0');
         $this->db->where('dvc_tech', $tech);
@@ -33,8 +33,9 @@ class Report_model extends CI_Model {
             return false;
         }
         
+        // Store color exactly as provided (VOH uses Display Names, OSC may be ' ')
+        
         // id_needs akan di-generate otomatis oleh database (AUTO_INCREMENT)
-        // dvc_col seharusnya sudah disanitasi dari frontend
         return $this->db->insert('inv_needs', $data);
     }
     
@@ -43,15 +44,19 @@ class Report_model extends CI_Model {
         if (isset($data['id_needs'])) {
             unset($data['id_needs']);
         }
-        // dvc_col seharusnya sudah disanitasi dari frontend
+        
+        // Store color exactly as provided (VOH uses Display Names, OSC may be ' ')
+        
         return $this->db->update('inv_needs', $data);
     }
     
     public function getNeedsData($id_dvc, $dvc_size, $dvc_col, $dvc_qc) {
-        // dvc_col yang diterima di sini seharusnya sudah disanitasi dari frontend
+        // Match color exactly as stored (VOH uses Display Names, OSC may be ' ')
+        $sanitized_dvc_col = $dvc_col;
+        
         $this->db->where('id_dvc', $id_dvc);
         $this->db->where('dvc_size', $dvc_size);
-        $this->db->where('dvc_col', $dvc_col);
+        $this->db->where('dvc_col', $sanitized_dvc_col);
         $this->db->where('dvc_qc', $dvc_qc);
         
         $query = $this->db->get('inv_needs');
@@ -272,11 +277,11 @@ class Report_model extends CI_Model {
     }
     
     public function deleteNeedsData($id_dvc, $dvc_size, $dvc_col, $dvc_qc) {
+        // Match color exactly as stored
         $this->db->where('id_dvc', $id_dvc);
         $this->db->where('dvc_size', $dvc_size);
         $this->db->where('dvc_col', $dvc_col);
         $this->db->where('dvc_qc', $dvc_qc);
-        
         return $this->db->delete('inv_needs');
     }
     
@@ -294,10 +299,8 @@ class Report_model extends CI_Model {
         // Convert to associative array for easy lookup
         $needs_data = array();
         foreach ($result as $row) {
-            // Sanitize dvc_col from database before creating the key for lookup
-            // This handles cases where dvc_col might be stored with spaces (e.g., "Dark Gray")
-            $sanitized_db_color = str_replace(' ', '-', strtolower($row['dvc_col']));
-            $key = $row['id_dvc'] . '_' . $row['dvc_size'] . '_' . $sanitized_db_color . '_' . $row['dvc_qc'];
+            // Use stored color value directly for the lookup key
+            $key = $row['id_dvc'] . '_' . $row['dvc_size'] . '_' . $row['dvc_col'] . '_' . $row['dvc_qc'];
             $needs_data[$key] = $row['needs_qty'];
         }
         
@@ -310,7 +313,7 @@ class Report_model extends CI_Model {
             ir.id_pms, ir.id_week, ir.id_dvc, ir.dvc_size, ir.dvc_col, ir.dvc_qc,
             ir.stock, ir.on_pms, ir.needs, ir.order, ir.over,
             iw.date_start, iw.date_finish, iw.period_y, iw.period_m, iw.period_w,
-            id.dvc_code, id.dvc_name
+            id.dvc_code, id.dvc_name, id.dvc_tech, id.dvc_type
         ');
         $this->db->from('inv_report ir');
         $this->db->join('inv_week iw', 'ir.id_week = iw.id_week', 'left');
@@ -336,7 +339,7 @@ class Report_model extends CI_Model {
     }
     
     public function getDevicesForReport($tech, $type) {
-        $this->db->select('id_dvc, dvc_code, dvc_name');
+        $this->db->select('id_dvc, dvc_code, dvc_name, dvc_tech, dvc_type');
         $this->db->from('inv_dvc');
         $this->db->where('dvc_tech', $tech);
         $this->db->where('dvc_type', $type);
@@ -368,12 +371,12 @@ class Report_model extends CI_Model {
             $colors = array('Dark Gray', 'Black', 'Grey', 'Navy', 'Army', 'Maroon', 'Custom');
         } elseif ($device['dvc_tech'] == 'ecct' && $device['dvc_type'] == 'APP') {
             // ECCT APP devices
-            $colors = array('Dark Gray');
+            $colors = array('Dark Grey');
         } elseif ($device['dvc_tech'] == 'ecbs' && $device['dvc_type'] == 'APP') {
             // ECBS APP devices
             $colors = array('Black');
-        } elseif ($device['dvc_type'] == 'osc') {
-            $colors = array('');
+        } elseif ($device['dvc_type'] == 'OSC') {
+            $colors = array(' '); // Empty string for OSC
         }
         
         return $colors;
@@ -438,9 +441,10 @@ class Report_model extends CI_Model {
                     $colors = $this->getDeviceColors($device['id_dvc']);
 
                     if ($device['dvc_type'] === 'osc'){
-                        $sizes =array("-");
+                        $sizes = array('-');
                     } else {
-                        $sizes = array('xs', 's', 'm', 'l', 'xl', 'xxl', '3xl', 'all', 'cus');  
+                        // Use uppercase sizes for generated records
+                        $sizes = array('XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', 'ALL', 'CUS');
                     }
                     
                     foreach ($sizes as $size) {
@@ -570,7 +574,7 @@ class Report_model extends CI_Model {
     }
     
     /**
-     * Update needs values in inv_report when inv_needs changes
+     * Update needs values in inv_report when inv_needs changes - IMPROVED
      */
     public function updateInventoryReportNeedsAuto() {
         try {
@@ -584,8 +588,11 @@ class Report_model extends CI_Model {
             $active_weeks = $this->db->get()->result_array();
             
             if (empty($active_weeks)) {
+                log_message('info', 'No active weeks found for auto-update needs');
                 return true; // No active weeks to update
             }
+            
+            $updated_count = 0;
             
             // Update needs for active weeks only
             foreach ($active_weeks as $week) {
@@ -600,13 +607,70 @@ class Report_model extends CI_Model {
                     
                     // Update needs in inv_report
                     $this->db->where('id_pms', $record['id_pms']);
-                    $this->db->update('inv_report', array('needs' => $needs));
+                    $result = $this->db->update('inv_report', array('needs' => $needs));
+                    
+                    if ($result) {
+                        $updated_count++;
+                    }
                 }
             }
             
+            log_message('info', 'Auto-updated needs for ' . $updated_count . ' records in active weeks');
             return true;
+            
         } catch (Exception $e) {
             log_message('error', 'Auto update inventory report needs error: ' . $e->getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Auto-update stock values when inv_act changes
+     */
+    public function updateInventoryReportStockAuto() {
+        try {
+            $current_date = date('Y-m-d H:i:s');
+            
+            // Get only active weeks (current date is within the week period)
+            $this->db->select('id_week, date_start, date_finish');
+            $this->db->from('inv_week');
+            $this->db->where('date_start <=', $current_date);
+            $this->db->where('date_finish >=', $current_date);
+            $active_weeks = $this->db->get()->result_array();
+            
+            if (empty($active_weeks)) {
+                log_message('info', 'No active weeks found for auto-update stock');
+                return true; // No active weeks to update
+            }
+            
+            $updated_count = 0;
+            
+            // Update stock for active weeks only
+            foreach ($active_weeks as $week) {
+                $this->db->select('ir.id_pms, ir.id_dvc, ir.dvc_size, ir.dvc_col, ir.dvc_qc');
+                $this->db->from('inv_report ir');
+                $this->db->where('ir.id_week', $week['id_week']);
+                $report_records = $this->db->get()->result_array();
+                
+                foreach ($report_records as $record) {
+                    // Calculate new stock
+                    $stock = $this->calculateStock($week, $record['id_dvc'], $record['dvc_size'], $record['dvc_col'], $record['dvc_qc']);
+                    
+                    // Update stock in inv_report
+                    $this->db->where('id_pms', $record['id_pms']);
+                    $result = $this->db->update('inv_report', array('stock' => $stock));
+                    
+                    if ($result) {
+                        $updated_count++;
+                    }
+                }
+            }
+            
+            log_message('info', 'Auto-updated stock for ' . $updated_count . ' records in active weeks');
+            return true;
+            
+        } catch (Exception $e) {
+            log_message('error', 'Auto update inventory report stock error: ' . $e->getMessage());
             return false;
         }
     }

@@ -94,8 +94,8 @@ textarea {
         <div class="form-group">
           <label for="in_qc_status">QC Status *</label>
           <select id="in_qc_status" class="select">
-            <option value="0">LN</option>
-            <option value="1">DN</option>
+            <option value="LN">LN</option>
+            <option value="DN">DN</option>
           </select>
         </div>
         <div class="form-group">

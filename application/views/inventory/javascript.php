@@ -962,7 +962,7 @@ function showInvWeekData() {
 }
 
 function loadInvWeekData(year, month) {
-    const link = window.location.origin + '/cdummy/inventory/data/data_inv_week_show/' + year + '?month=' + month;
+    const link = window.location.origin + '/cdummy/inventory/data/week/' + year + '?month=' + month;
     console.log('Loading data from:', link);
     loadData(link);
 }

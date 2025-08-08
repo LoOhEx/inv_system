@@ -183,8 +183,8 @@ class Data_model extends CI_Model {
             $filter['first'] = 0;
         }
         $sql = "SELECT dvc.id_dvc, dvc.dvc_name, dvc.dvc_code, dvc.dvc_tech, dvc.dvc_type, " .
-            "(SELECT COUNT(*) FROM inv_act WHERE id_dvc = dvc.id_dvc AND (inv_out IS NULL OR inv_out = '' OR inv_out = '0000-00-00 00:00:00') AND dvc_qc = '0') as ln_count, " .
-            "(SELECT COUNT(*) FROM inv_act WHERE id_dvc = dvc.id_dvc AND (inv_out IS NULL OR inv_out = '' OR inv_out = '0000-00-00 00:00:00') AND dvc_qc = '1') as dn_count " .
+            "(SELECT COUNT(*) FROM inv_act WHERE id_dvc = dvc.id_dvc AND (inv_out IS NULL OR inv_out = '' OR inv_out = '0000-00-00 00:00:00') AND dvc_qc = 'LN') as ln_count, " .
+            "(SELECT COUNT(*) FROM inv_act WHERE id_dvc = dvc.id_dvc AND (inv_out IS NULL OR inv_out = '' OR inv_out = '0000-00-00 00:00:00') AND dvc_qc = 'DN') as dn_count " .
             "FROM inv_dvc dvc WHERE LOWER(dvc.dvc_tech) = '".$tech."' ".
             "AND dvc.status = 0 ".
             "AND UPPER(dvc.dvc_type) = 'OSC' ";
@@ -235,5 +235,72 @@ class Data_model extends CI_Model {
         } else {
             return $data[$col];
         }
+    }
+
+    public function processInventoryInput($data) {
+        try {
+            // Validate input data
+            if (!isset($data['type']) || !in_array($data['type'], ['in', 'out', 'move'])) {
+                return false;
+            }
+            
+            // Process based on type
+            switch ($data['type']) {
+                case 'in':
+                    return $this->processInventoryIn($data);
+                case 'out':
+                    return $this->processInventoryOut($data);
+                case 'move':
+                    return $this->processInventoryMove($data);
+                default:
+                    return false;
+            }
+        } catch (Exception $e) {
+            log_message('error', 'Process inventory input error: ' . $e->getMessage());
+            return false;
+        }
+    }
+    
+    private function processInventoryIn($data) {
+        $insert_data = array(
+            'id_dvc' => $data['id_dvc'],
+            'dvc_sn' => isset($data['dvc_sn']) ? $data['dvc_sn'] : '',
+            'dvc_size' => isset($data['dvc_size']) ? $data['dvc_size'] : '',
+            'dvc_col' => isset($data['dvc_col']) ? $data['dvc_col'] : '',
+            'dvc_qc' => isset($data['dvc_qc']) ? $data['dvc_qc'] : '',
+            'inv_in' => date('Y-m-d H:i:s'),
+            'adm_in' => isset($data['quantity']) ? $data['quantity'] : 1
+        );
+        
+        return $this->db->insert('inv_act', $insert_data);
+    }
+    
+    private function processInventoryOut($data) {
+        $insert_data = array(
+            'id_dvc' => $data['id_dvc'],
+            'dvc_sn' => isset($data['dvc_sn']) ? $data['dvc_sn'] : '',
+            'dvc_size' => isset($data['dvc_size']) ? $data['dvc_size'] : '',
+            'dvc_col' => isset($data['dvc_col']) ? $data['dvc_col'] : '',
+            'dvc_qc' => isset($data['dvc_qc']) ? $data['dvc_qc'] : '',
+            'inv_out' => date('Y-m-d H:i:s'),
+            'adm_out' => isset($data['quantity']) ? $data['quantity'] : 1
+        );
+        
+        return $this->db->insert('inv_act', $insert_data);
+    }
+    
+    private function processInventoryMove($data) {
+        $insert_data = array(
+            'id_dvc' => $data['id_dvc'],
+            'dvc_sn' => isset($data['dvc_sn']) ? $data['dvc_sn'] : '',
+            'dvc_size' => isset($data['dvc_size']) ? $data['dvc_size'] : '',
+            'dvc_col' => isset($data['dvc_col']) ? $data['dvc_col'] : '',
+            'dvc_qc' => isset($data['dvc_qc']) ? $data['dvc_qc'] : '',
+            'inv_move' => date('Y-m-d H:i:s'),
+            'adm_move' => isset($data['quantity']) ? $data['quantity'] : 1,
+            'loc_move' => isset($data['location']) ? $data['location'] : ''
+        );
+        
+        return $this->db->insert('inv_act', $insert_data);
     }
 }

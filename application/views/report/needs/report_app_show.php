@@ -1,11 +1,11 @@
 <?php
 $voh_colors = array(
-    array('name' => 'Black', 'hex' => '#000000'),
-    array('name' => 'Navy', 'hex' => '#001f5b'),
-    array('name' => 'Maroon', 'hex' => '#800000'),
-    array('name' => 'Army', 'hex' => '#4b5320'),
     array('name' => 'Dark Gray', 'hex' => '#A9A9A9'),
+    array('name' => 'Black', 'hex' => '#000000'),
     array('name' => 'Grey', 'hex' => '#808080'),
+    array('name' => 'Navy', 'hex' => '#001f5b'),
+    array('name' => 'Army', 'hex' => '#4b5320'),
+    array('name' => 'Maroon', 'hex' => '#800000'),
     array('name' => 'Custom', 'hex' => '#ffffff'),
 );
 
@@ -15,21 +15,51 @@ $model_data = isset($data) && is_array($data) ? $data : array();
 $existing_needs = isset($existing_needs) && is_array($existing_needs) ? $existing_needs : array();
 $is_ecbs = isset($tech) && $tech == 'ecbs';
 
-// Function to get existing value
+// Function to get existing value - FIXED: Use proper QC values
 function getExistingValue($existing_needs, $id_dvc, $size, $color, $qc) {
+    // QC should be 'LN' or 'DN', not from id_dvc
     $key = $id_dvc . '_' . $size . '_' . $color . '_' . $qc;
     return isset($existing_needs[$key]) ? $existing_needs[$key] : 0;
 }
 
-// Group VOH items together
+// Function to determine color based on device properties
+function getDeviceColor($item) {
+    $dvc_code = strtoupper($item['dvc_code']);
+    $dvc_tech = strtolower($item['dvc_tech']);
+    $dvc_type = strtoupper($item['dvc_type']);
+    
+    // For VOH devices, return null to use multiple colors
+    if (stripos($dvc_code, 'VOH') === 0) {
+        return null;
+    }
+    
+    // For non-VOH devices, determine color based on tech and type
+    if ($dvc_tech == 'ecct' && $dvc_type == 'APP') {
+        return 'Dark Grey';
+    } elseif ($dvc_tech == 'ecbs' && $dvc_type == 'APP') {
+        return 'Black';
+    } elseif ($dvc_type == 'OSC') {
+        return ' '; // Empty string for OSC
+    }
+    
+    // Default case - no default color
+    return null;
+}
+
+// Group items by their color requirements
 $grouped_data = array();
 $voh_items = array();
 $regular_items = array();
 
 foreach ($model_data as $item) {
-    if ($is_ecbs && (stripos($item['dvc_name'], 'Vest Outer Hoodie') !== false || stripos($item['dvc_code'], 'VOH') === 0)) {
+    $device_color = getDeviceColor($item);
+    
+    if ($device_color === null && (stripos($item['dvc_name'], 'Vest Outer Hoodie') !== false || stripos($item['dvc_code'], 'VOH') === 0)) {
+        // VOH items with multiple colors
         $voh_items[] = $item;
     } else {
+        // Regular items with specific or no color
+        $item['assigned_color'] = $device_color;
         $regular_items[] = $item;
     }
 }
@@ -72,11 +102,13 @@ foreach ($regular_items as $item) {
                 <?php if (!empty($grouped_data)) {
                     $row_display_no = 1;
                     foreach ($grouped_data as $item) {
-                        $is_voh = ($is_ecbs && (stripos($item['dvc_name'], 'Vest Outer Hoodie') !== false || stripos($item['dvc_code'], 'VOH') === 0));
+                        $device_color = getDeviceColor($item);
+                        $is_voh = ($device_color === null && (stripos($item['dvc_name'], 'Vest Outer Hoodie') !== false || stripos($item['dvc_code'], 'VOH') === 0));
                         
                         if ($is_voh) {
                             foreach ($voh_colors as $color_idx => $color_info) {
-                                $sanitized_color_name = str_replace(' ', '-', strtolower($color_info['name']));
+                                $color_value = (strtolower($color_info['name']) === 'custom') ? 'custom' : $color_info['name'];
+                                $sanitized_color_name = str_replace(' ', '-', strtolower($color_value));
                             ?>
                                 <tr>
                                     <?php if ($color_idx == 0) { ?>
@@ -94,7 +126,7 @@ foreach ($regular_items as $item) {
                                     <?php foreach ($sizes as $sz) {
                                         foreach ($qc_types as $qc) {
                                             $input_id = $item['dvc_code'] . '_' . $sz . '_' . $sanitized_color_name . '_' . $qc;
-                                            $existing_value = getExistingValue($existing_needs, $item['id_dvc'], $sz, $sanitized_color_name, $qc);
+                                            $existing_value = getExistingValue($existing_needs, $item['id_dvc'], $sz, $color_value, $qc);
                                     ?>
                                             <td align="center">
                                                 <input type="number"
@@ -105,7 +137,8 @@ foreach ($regular_items as $item) {
                                                         style="width: 45px; text-align: center;"
                                                        data-id-dvc="<?php echo $item['id_dvc']; ?>"
                                                        data-size="<?php echo $sz; ?>"
-                                                       data-color="<?php echo $sanitized_color_name; ?>"
+                                                       data-color="<?php echo $color_value; ?>"
+                                                       data-key="<?php echo $sanitized_color_name; ?>"
                                                        data-qc="<?php echo $qc; ?>"
                                                        onchange="calculateTotals()">
                                             </td>
@@ -115,15 +148,22 @@ foreach ($regular_items as $item) {
                                 </tr>
                             <?php }
                             $row_display_no++;
-                        } else { ?>
+                        } else { 
+                            // Regular items with specific color or no color
+                            $assigned_color = isset($item['assigned_color']) ? $item['assigned_color'] : null;
+                            $color_value = $assigned_color ? $assigned_color : ' ';
+                            $sanitized_color = ($assigned_color && $assigned_color !== ' ')
+                                ? str_replace(' ', '-', strtolower($assigned_color))
+                                : 'no-color';
+                        ?>
                             <tr>
                                 <td align="center"><?php echo $row_display_no++; ?></td>
                                 <td align="left"><?php echo htmlspecialchars($item['dvc_name']); ?></td>
                                 <td align="center"><?php echo htmlspecialchars($item['dvc_code']); ?></td>
                                 <?php foreach ($sizes as $sz) {
                                     foreach ($qc_types as $qc) {
-                                        $input_id = $item['dvc_code'] . '_' . $sz . '_default_' . $qc;
-                                        $existing_value = getExistingValue($existing_needs, $item['id_dvc'], $sz, 'default', $qc);
+                                        $input_id = $item['dvc_code'] . '_' . $sz . '_' . $sanitized_color . '_' . $qc;
+                                        $existing_value = getExistingValue($existing_needs, $item['id_dvc'], $sz, $color_value, $qc);
                                 ?>
                                         <td align="center">
                                             <input type="number"
@@ -134,13 +174,14 @@ foreach ($regular_items as $item) {
                                                     style="width: 45px; text-align: center;"
                                                    data-id-dvc="<?php echo $item['id_dvc']; ?>"
                                                    data-size="<?php echo $sz; ?>"
-                                                   data-color="default"
+                                                   data-color="<?php echo $color_value; ?>"
+                                                   data-key="<?php echo $sanitized_color; ?>"
                                                    data-qc="<?php echo $qc; ?>"
                                                    onchange="calculateTotals()">
                                         </td>
                                 <?php } } ?>
-                                <td align="center"><strong><span id="subtotal_<?php echo $item['id_dvc']; ?>_default">0</span></strong></td>
-                                <td align="center"><span id="percentage_<?php echo $item['id_dvc']; ?>_default">0</span>%</td>
+                                <td align="center"><strong><span id="subtotal_<?php echo $item['id_dvc']; ?>_<?php echo $sanitized_color; ?>">0</span></strong></td>
+                                <td align="center"><span id="percentage_<?php echo $item['id_dvc']; ?>_<?php echo $sanitized_color; ?>">0</span>%</td>
                             </tr>
                         <?php }
                     }

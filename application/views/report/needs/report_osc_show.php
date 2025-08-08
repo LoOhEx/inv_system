@@ -4,10 +4,35 @@ $qc_types = array('LN', 'DN');
 $model_data = isset($data) && is_array($data) ? $data : array();
 $existing_needs = isset($existing_needs) && is_array($existing_needs) ? $existing_needs : array();
 
-// Function to get existing value
+// Function to get existing value - FIXED: Use proper QC values
 function getExistingValue($existing_needs, $id_dvc, $size, $color, $qc) {
+    // QC should be 'LN' or 'DN', not from id_dvc
     $key = $id_dvc . '_' . $size . '_' . $color . '_' . $qc;
     return isset($existing_needs[$key]) ? $existing_needs[$key] : 0;
+}
+
+// Function to determine color based on device properties
+function getDeviceColor($item) {
+    $dvc_code = strtoupper($item['dvc_code']);
+    $dvc_tech = strtolower($item['dvc_tech']);
+    $dvc_type = strtoupper($item['dvc_type']);
+    
+    // For VOH devices, return null to use multiple colors
+    if (stripos($dvc_code, 'VOH') === 0) {
+        return null;
+    }
+    
+    // For non-VOH devices, determine color based on tech and type
+    if ($dvc_tech == 'ecct' && $dvc_type == 'APP') {
+        return 'Dark Grey';
+    } elseif ($dvc_tech == 'ecbs' && $dvc_type == 'APP') {
+        return 'Black';
+    } elseif ($dvc_type == 'OSC') {
+        return ' '; // Empty string for OSC
+    }
+    
+    // Default case - no default color
+    return null;
 }
 ?>
 
@@ -63,6 +88,10 @@ function getExistingValue($existing_needs, $id_dvc, $size, $color, $qc) {
                         
                         foreach ($group['rows'] as $row) {
                             $no++;
+                            $device_color = getDeviceColor($row);
+                            $assigned_color = $device_color;
+                            $color_display = $assigned_color === ' ' ? 'No Color' : ($assigned_color ? $assigned_color : 'No Color');
+                            $sanitized_color = $assigned_color ? str_replace(' ', '-', strtolower($assigned_color)) : 'no-color';
                 ?>
                 <tr>
                     <td align="center"><?php echo $no; ?></td>
@@ -72,8 +101,8 @@ function getExistingValue($existing_needs, $id_dvc, $size, $color, $qc) {
                     <td align="center"><?php echo htmlspecialchars($row['dvc_code']); ?></td>
                     <?php foreach ($sizes as $sz) {
                         foreach ($qc_types as $qc) {
-                            $input_id = $row['dvc_code'] . '_' . $sz . '_default_' . $qc;
-                            $existing_value = getExistingValue($existing_needs, $row['id_dvc'], $sz, 'default', $qc);
+                            $input_id = $row['dvc_code'] . '_' . $sz . '_' . $sanitized_color . '_' . $qc;
+                            $existing_value = getExistingValue($existing_needs, $row['id_dvc'], $sz, ($assigned_color ? $assigned_color : ' '), $qc);
                     ?>
                             <td align="center">
                                 <input type="number"
@@ -84,13 +113,14 @@ function getExistingValue($existing_needs, $id_dvc, $size, $color, $qc) {
                                         style="width: 45px; text-align: center;"
                                        data-id-dvc="<?php echo $row['id_dvc']; ?>"
                                        data-size="<?php echo $sz; ?>"
-                                       data-color="default"
+                                       data-color="<?php echo ($assigned_color ? $assigned_color : ' '); ?>"
+                                       data-key="<?php echo $sanitized_color; ?>"
                                        data-qc="<?php echo $qc; ?>"
                                        onchange="calculateTotals()">
                             </td>
                     <?php } } ?>
-                    <td align="center"><strong><span id="subtotal_<?php echo $row['id_dvc']; ?>_default">0</span></strong></td>
-                    <td align="center"><span id="percentage_<?php echo $row['id_dvc']; ?>_default">0</span>%</td>
+                    <td align="center"><strong><span id="subtotal_<?php echo $row['id_dvc']; ?>_<?php echo $sanitized_color; ?>">0</span></strong></td>
+                    <td align="center"><span id="percentage_<?php echo $row['id_dvc']; ?>_<?php echo $sanitized_color; ?>">0</span>%</td>
                 </tr>
                 <?php
                             $first_row = false;

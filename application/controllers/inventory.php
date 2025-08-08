@@ -131,127 +131,74 @@ class Inventory extends CI_Controller {
     
     public function input_process() {
         try {
-            $input_data = $this->_get_json_input();
-            if (!$input_data) {
-                return $this->_output_json($this->_json_response(false, 'Invalid JSON input'));
+            $data = $this->_get_json_input();
+            
+            if (!$data) {
+                $this->_json_response(false, 'Invalid input data');
+                return;
             }
             
-            $type = $this->input->get_post('type') ?: (isset($input_data['type']) ? $input_data['type'] : null);
+            // Process the input data
+            $result = $this->data_model->processInventoryInput($data);
             
-            if (!in_array($type, ['in', 'out', 'move'])) {
-                return $this->_output_json($this->_json_response(false, 'Invalid process type'));
+            if ($result) {
+                // Auto-update stock values for active weeks when inv_act changes
+                $this->report_model->updateInventoryReportStockAuto();
+                
+                $this->_json_response(true, 'Data processed successfully');
+            } else {
+                $this->_json_response(false, 'Failed to process data');
             }
             
-            switch ($type) {
-                case 'in':
-                    $result = $this->inventory_model->processInventoryIn($input_data);
-                    break;
-                case 'out':
-                    $result = $this->inventory_model->processInventoryOut($input_data);
-                    break;
-                case 'move':
-                    $result = $this->inventory_model->processInventoryMove($input_data);
-                    break;
-                default:
-                    $result = $this->_json_response(false, 'Invalid process type');
-            }
-            
-            return $this->_output_json($result);
         } catch (Exception $e) {
-            log_message('error', 'Input process error: ' . $e->getMessage());
-            return $this->_output_json($this->_json_response(false, 'Error: ' . $e->getMessage()));
+            $this->_handle_error($e, 'Input process error', true);
         }
     }
 
     public function data($type = "", $input = "") {
         try {
-            $data = $this->load_top("", "no_view");
-            
-            // Validate type parameter
-            if (empty($type)) {
-                show_404();
-                return;
-            }
-            
-            // Handle data_inv_week_show data display
-            if ($type == 'data_inv_week_show') {
-                $year = $this->uri->segment(4);
-                $month = $this->input->get('month');
+            if ($this->input->is_ajax_request()) {
+                $data = $this->_prepare_view_data();
                 
-                if ($year && $month) {
-                    $data['data'] = $this->report_model->get_inv_week_data($year, $month);
-                } else {
-                    $data['data'] = array();
+                switch ($type) {
+                    case "item":
+                        $result = $this->data_model->getAllItem(20);
+                        $data['result'] = $result;
+                        $this->load->view('inventory/data/data_inv_app_show', $data);
+                        break;
+                        
+                    case "ecct":
+                        $result = $this->data_model->getAllItemByTech('ecct', 20);
+                        $data['result'] = $result;
+                        $this->load->view('inventory/data/data_inv_ecct_show', $data);
+                        break;
+                        
+                    case "ecbs":
+                        $result = $this->data_model->getAllItemByTech('ecbs', 20);
+                        $data['result'] = $result;
+                        $this->load->view('inventory/data/data_inv_ecbs_show', $data);
+                        break;
+                        
+                    case "week":
+                        $result = $this->data_model->getInvWeekData();
+                        $data['result'] = $result;
+                        $this->load->view('inventory/data/data_inv_week_show', $data);
+                        break;
+                        
+                    default:
+                        echo "Invalid data type";
+                        break;
                 }
                 
-                $this->load->view('report/week/data_inv_week_show', $data);
-                $this->load_bot($data, "no_view");
-                return;
-            }
-            
-            // Mapping type ke handler dan parameter
-            $type_map = array(
-                // APP
-                'data_inv_app_show' => array('handler' => 'getDeviceStockApp', 'view' => 'inventory/data/data_inv_app_show'),
-                'data_inv_ecct_app_show' => array('handler' => 'getDeviceStockApp', 'view' => 'inventory/data/data_inv_app_show', 'tech' => 'ecct'),
-                'data_inv_ecbs_app_show' => array('handler' => 'getDeviceStockApp', 'view' => 'inventory/data/data_inv_app_show', 'tech' => 'ecbs'),
-                'data_inv_app_export' => array('handler' => 'getDeviceStockApp', 'view' => 'inventory/data/data_inv_app_export'),
-                'data_inv_ecct_app_export' => array('handler' => 'getDeviceStockApp', 'view' => 'inventory/data/data_inv_app_export', 'tech' => 'ecct'),
-                'data_inv_ecbs_app_export' => array('handler' => 'getDeviceStockApp', 'view' => 'inventory/data/data_inv_app_export', 'tech' => 'ecbs'),
+                // Auto-update stock values for active weeks when data is loaded
+                $this->report_model->updateInventoryReportStockAuto();
                 
-                // OSC
-                'data_inv_osc_show' => array('handler' => 'getDeviceStockOsc', 'view' => 'inventory/data/data_inv_osc_show'),
-                'data_inv_ecct_osc_show' => array('handler' => 'getDeviceStockOsc', 'view' => 'inventory/data/data_inv_osc_show', 'tech' => 'ecct'),
-                'data_inv_ecbs_osc_show' => array('handler' => 'getDeviceStockOsc', 'view' => 'inventory/data/data_inv_osc_show', 'tech' => 'ecbs'),
-                'data_inv_osc_export' => array('handler' => 'getDeviceStockOsc', 'view' => 'inventory/data/data_inv_osc_export'),
-                'data_inv_ecct_osc_export' => array('handler' => 'getDeviceStockOsc', 'view' => 'inventory/data/data_inv_osc_export', 'tech' => 'ecct'),
-                'data_inv_ecbs_osc_export' => array('handler' => 'getDeviceStockOsc', 'view' => 'inventory/data/data_inv_osc_export', 'tech' => 'ecbs'),
-            );
-
-            if (isset($type_map[$type])) {
-                $tech = isset($type_map[$type]['tech']) ? $type_map[$type]['tech'] : 
-                       ($this->input->get('tech') ?: $this->input->post('tech') ?: 'ecct');
-                $handler = $type_map[$type]['handler'];
-                $view = $type_map[$type]['view'];
-                $data['data'] = $this->inventory_model->$handler($tech, 999999);
-                $this->load->view($view, $data);
-                $this->load_bot($data, "no_view");
-                return;
+            } else {
+                show_404();
             }
             
-            switch ($type) {
-                case 'data_item_show':
-                    $data['data'] = $this->inventory_model->getAllItemByTech('ecct', 10);
-                    $this->load->view('inventory/data/data_item_show', $data);
-                    break;
-                case 'data_item_show_ecbs':
-                    $data['data'] = $this->inventory_model->getAllItemByTech('ecbs', 10);
-                    $this->load->view('inventory/data/data_item_show', $data);
-                    break;
-                case 'data_item_export':
-                    $context = $this->input->get('context');
-                    if ($context === 'inv_ecct') {
-                        $data['data'] = $this->inventory_model->getAllItemByTech('ecct', 999999);
-                    } elseif ($context === 'inv_ecbs') {
-                        $data['data'] = $this->inventory_model->getAllItemByTech('ecbs', 999999);
-                    } else {
-                        $data['data'] = $this->inventory_model->getAllItemByTech('ecct', 999999);
-                    }
-                    $this->load->view('inventory/data/data_item_export', $data);
-                    break;
-                case 'osc_sync_differences':
-                    $tech = $this->input->get('tech') ?: 'ecct';
-                    $data['differences'] = $this->inventory_model->getOscSyncDifferences($tech);
-                    $this->load->view('inventory/data/osc_sync_differences', $data);
-                    break;
-                default:
-                    show_404();
-                    return;
-            }
-            $this->load_bot($data, "no_view");
         } catch (Exception $e) {
-            log_message('error', 'Data method error: ' . $e->getMessage());
-            show_error('An error occurred while processing the request.');
+            $this->_handle_error($e, 'Data load error', $this->input->is_ajax_request());
         }
     }
 
@@ -528,6 +475,9 @@ class Inventory extends CI_Controller {
             // This will update needs values for current active weeks only
             $this->report_model->updateInventoryReportNeedsAuto();
             
+            // Auto-update stock values for current active weeks only
+            $this->report_model->updateInventoryReportStockAuto();
+            
             $this->_json_response(true, 'Data processed', array(
                 'success' => $success_count,
                 'total' => count($data),
@@ -633,12 +583,12 @@ class Inventory extends CI_Controller {
     }
         
     /**
-     * Update inventory stock
+     * Auto-update stock when inv_act changes
      */
     public function update_inventory_stock() {
         try {
-            $result = $this->report_model->updateInventoryReportStock();
-            $message = $result ? 'Inventory stock updated successfully' : 'Failed to update inventory stock';
+            $result = $this->report_model->updateInventoryReportStockAuto();
+            $message = $result ? 'Stock values auto-updated successfully' : 'Failed to auto-update stock values';
             
             if ($this->input->is_ajax_request()) {
                 $this->_json_response($result, $message);
@@ -647,17 +597,17 @@ class Inventory extends CI_Controller {
             }
             
         } catch (Exception $e) {
-            $this->_handle_error($e, 'Update inventory stock error', $this->input->is_ajax_request());
+            $this->_handle_error($e, 'Auto-update inventory stock error', $this->input->is_ajax_request());
         }
     }
     
     /**
-     * Update inventory needs
+     * Auto-update needs when inv_needs changes
      */
     public function update_inventory_needs() {
         try {
-            $result = $this->report_model->updateInventoryReportNeeds();
-            $message = $result ? 'Inventory needs updated successfully' : 'Failed to update inventory needs';
+            $result = $this->report_model->updateInventoryReportNeedsAuto();
+            $message = $result ? 'Needs values auto-updated successfully' : 'Failed to auto-update needs values';
             
             if ($this->input->is_ajax_request()) {
                 $this->_json_response($result, $message);
@@ -666,7 +616,7 @@ class Inventory extends CI_Controller {
             }
             
         } catch (Exception $e) {
-            $this->_handle_error($e, 'Update inventory needs error', $this->input->is_ajax_request());
+            $this->_handle_error($e, 'Auto-update inventory needs error', $this->input->is_ajax_request());
         }
     }
     
@@ -715,6 +665,11 @@ class Inventory extends CI_Controller {
             return array('success' => false, 'action' => 'invalid');
         }
         
+        // Validate QC value - should be 'LN' or 'DN'
+        if (!in_array($item['dvc_qc'], array('LN', 'DN'))) {
+            return array('success' => false, 'action' => 'invalid_qc');
+        }
+        
         $item['needs_qty'] = intval($item['needs_qty']);
         $item['original_qty'] = intval($item['original_qty']);
         
@@ -723,9 +678,45 @@ class Inventory extends CI_Controller {
             return array('success' => true, 'action' => 'unchanged');
         }
         
+        // Get device info to determine proper color
+        $this->db->select('dvc_code, dvc_tech, dvc_type');
+        $this->db->from('inv_dvc');
+        $this->db->where('id_dvc', $item['id_dvc']);
+        $device_query = $this->db->get();
+        
+            if ($device_query->num_rows() > 0) {
+            $device = $device_query->row_array();
+            $dvc_code = strtoupper($device['dvc_code']);
+            $dvc_tech = strtolower($device['dvc_tech']);
+            $dvc_type = strtoupper($device['dvc_type']);
+            
+            // Determine color based on device properties
+            if (stripos($dvc_code, 'VOH') === 0) {
+                // For VOH devices, use the exact color text from the form (e.g., "Dark Gray")
+                $item['dvc_col'] = $item['dvc_col'];
+            } elseif ($dvc_tech == 'ecct' && $dvc_type == 'APP') {
+                // ECCT APP devices should be "Dark Grey" (store display text)
+                $item['dvc_col'] = 'Dark Grey';
+            } elseif ($dvc_tech == 'ecbs' && $dvc_type == 'APP') {
+                // ECBS APP devices should be "Black"
+                $item['dvc_col'] = 'Black';
+            } elseif ($dvc_type == 'OSC') {
+                // OSC devices should have empty string
+                $item['dvc_col'] = ' ';
+            } else {
+                // For other devices, keep what the form sends (if any)
+                $item['dvc_col'] = $item['dvc_col'];
+            }
+        } else {
+            // Fallback: keep as provided
+            $item['dvc_col'] = $item['dvc_col'];
+        }
+        
         $db_data = array(
-            'id_dvc' => $item['id_dvc'], 'dvc_size' => $item['dvc_size'],
-            'dvc_col' => $item['dvc_col'], 'dvc_qc' => $item['dvc_qc'],
+            'id_dvc' => $item['id_dvc'], 
+            'dvc_size' => $item['dvc_size'],
+            'dvc_col' => $item['dvc_col'], 
+            'dvc_qc' => $item['dvc_qc'],
             'needs_qty' => $item['needs_qty']
         );
         

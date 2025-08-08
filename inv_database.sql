@@ -161,7 +161,7 @@ CREATE TABLE `inv_needs` (
   `id_dvc` int(11) DEFAULT NULL,
   `dvc_size` varchar(20) DEFAULT NULL,
   `dvc_col` varchar(50) DEFAULT NULL,
-  `dvc_qc` tinyint(1) DEFAULT NULL,
+  `dvc_qc` varchar(50) DEFAULT NULL,
   `needs_qty` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -178,7 +178,7 @@ CREATE TABLE `inv_report` (
   `dvc_size` varchar(20) DEFAULT NULL,
   `dvc_col` varchar(50) DEFAULT NULL,
   `dvc_sn` varchar(100) DEFAULT NULL,
-  `dvc_qc` tinyint(1) DEFAULT NULL,
+  `dvc_qc` varchar(50) DEFAULT NULL,
   `stock` int(11) DEFAULT NULL,
   `on_pms` int(11) DEFAULT NULL,
   `needs` int(11) DEFAULT NULL,

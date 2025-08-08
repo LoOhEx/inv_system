@@ -12,11 +12,6 @@
                         <i class="ki-filled ki-setting !text-base"></i>Generate Data
                     </button>
                     
-                    <!-- Update Stock Button -->
-                    <button class="btn btn-sm btn-info" id="btn_update_stock" onclick="updateInventoryStock()" title="Update stock values from inv_act">
-                        <i class="ki-filled ki-refresh !text-base"></i>Update Stock
-                    </button>
-                    
                     <!-- Input On PMS Button -->
                     <button class="btn btn-sm btn-primary" id="btn_input_pms" onclick="showInputPmsModal()">
                         <i class="ki-filled ki-plus !text-base"></i>Input On PMS
@@ -185,31 +180,6 @@
         }).always(function() {
             btn.disabled = false;
             btn.innerHTML = '<i class="ki-filled ki-setting !text-base"></i>Generate Data';
-        });
-    }
-    
-    // Update inventory stock
-    function updateInventoryStock() {
-        if (!confirm('This will update stock values from inv_act table. Continue?')) {
-            return;
-        }
-        
-        var btn = document.getElementById('btn_update_stock');
-        btn.disabled = true;
-        btn.innerHTML = '<i class="ki-filled ki-loading !text-base"></i>Updating...';
-        
-        $.post("<?php echo base_url(); ?>inventory/update_inventory_stock", function(response) {
-            if (response.success) {
-                showToast('Stock values updated successfully', 'success');
-                showData(); // Refresh the table
-            } else {
-                showToast('Failed to update: ' + (response.message || 'Unknown error'), 'error');
-            }
-        }, 'json').fail(function() {
-            showToast('Failed to update stock values', 'error');
-        }).always(function() {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="ki-filled ki-refresh !text-base"></i>Update Stock';
         });
     }
     

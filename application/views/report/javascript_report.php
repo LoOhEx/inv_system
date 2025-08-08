@@ -24,7 +24,7 @@ function toggleEditMode() {
         $('#editModeBtn').text('Cancel').removeClass('btn-primary').addClass('btn-secondary');
         $('#saveAllDataBtn').show();
         // Store original values
-        $('.needs-input').each(function() { $(this).data('original', $(this).val()); });
+            $('.needs-input').each(function() { $(this).data('original', $(this).val()); });
     } else {
         $('#editModeBtn').text('Edit').removeClass('btn-secondary').addClass('btn-primary');
         $('#saveAllDataBtn').hide();
@@ -56,7 +56,7 @@ function calculateTotals() {
     
     // Calculate row subtotals
     $('.needs-input').each(function() {
-        var key = $(this).data('id-dvc') + '_' + $(this).data('color');
+        var key = $(this).data('id-dvc') + '_' + ($(this).data('key') || $(this).data('color'));
         rowSubtotals[key] = (rowSubtotals[key] || 0) + (parseInt($(this).val()) || 0);
     });
     
